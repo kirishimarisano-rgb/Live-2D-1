@@ -29,3 +29,8 @@
 - 麥克風對嘴：RMS 音量＋自動學環境噪音，張嘴快閉嘴慢；用 Chromium 假麥克風測過嘴巴會跟著動（`screenshots/m4-mic.png`）
 - 對話框：台詞在 `src/lines.json`，打包時也原樣塞進 HTML，可以直接改；打字時嘴巴會跟著動
 - 截圖 `screenshots/m4-live-*.png`；修掉：一開場剛好在眨眼（第一次眨眼時間改成隨機）、鼓臉時嘴巴被說話動畫打開
+
+## M5 打包與文件 ✅
+- `npm run build` → `dist/index.html`（單一檔案約 1.8 MB，圖片內嵌，雙擊可開）
+- README.md：怎麼玩、改台詞、調參數、換角色圖（分圖層／平面圖兩種做法）
+- 最後一輪截圖 `screenshots/m5-*.png`（靜態姿勢、網格線版本、互動場景），沒有頁面錯誤
