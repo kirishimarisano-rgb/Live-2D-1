@@ -78,8 +78,9 @@ P['tail'] = [(1002, 110), (1040, 92), (1090, 100), (1130, 135), (1155, 200), (11
 P['headdress'] = [(545, 340), (515, 300), (512, 240), (530, 175), (565, 110), (610, 55), (675, 18), (740, 5),
                   (805, 5), (860, 30), (862, 62), (800, 70), (760, 85), (720, 105), (680, 125),
                   (640, 160), (610, 200), (585, 250), (568, 300), (555, 335)]
-P['ahoge'] = [(458, 262), (470, 205), (500, 160), (540, 128), (590, 108), (640, 98), (700, 97),
-              (700, 104), (645, 108), (595, 120), (552, 142), (514, 178), (486, 220), (468, 262)]
+P['ahoge'] = [(458, 262), (463, 215), (480, 180), (510, 148), (550, 120), (595, 98), (640, 90), (706, 88),
+              (706, 104), (660, 108), (615, 113), (585, 122), (560, 135), (540, 150), (515, 172), (497, 195),
+              (482, 225), (472, 262)]
 P['face'] = [(615, 300), (612, 430), (628, 478), (660, 528), (700, 560), (750, 580), (795, 584),
              (840, 568), (875, 542), (905, 505), (925, 455), (935, 380), (930, 300), (870, 280),
              (760, 270), (660, 280)]
@@ -94,10 +95,10 @@ P['neck_ext'] = [(762, 500), (842, 500), (848, 560), (842, 620), (765, 620), (75
 EYES = {
     'L': dict(top=[(638, 432), (650, 422), (670, 412), (690, 407), (710, 408), (721, 416)],
               bot=[(638, 432), (645, 448), (660, 460), (676, 463), (692, 461), (710, 453), (721, 440), (721, 416)],
-              seed=(690, 402), iris=(696, 434, 24, 28), lashbox=(598, 386, 728, 438), brow=[(646, 392), (676, 381), (712, 384)]),
+              seed=(690, 402), iris=(696, 434, 24, 28), lashbox=(598, 386, 728, 438), brow=[(658, 393), (684, 382), (712, 385)]),
     'R': dict(top=[(803, 392), (812, 380), (840, 372), (870, 369), (892, 374), (896, 384)],
               bot=[(803, 392), (812, 408), (830, 421), (856, 424), (880, 421), (893, 410), (896, 384)],
-              seed=(860, 363), iris=(860, 398, 27, 28), lashbox=(782, 346, 936, 392), brow=[(800, 356), (845, 342), (892, 344)]),
+              seed=(860, 363), iris=(860, 398, 27, 28), lashbox=(782, 346, 936, 392), brow=[(788, 364), (812, 352), (842, 349)]),
 }
 MOUTH_BOX = (742, 496, 832, 536)
 MOUTH_C = (787, 518)
@@ -115,7 +116,7 @@ lum = np.array(Image.fromarray(rgb0).convert('L')).astype(np.float32)
 ear_ring_px = M['earring'] & fg & ((lum < 150) | ((S > 0.35) & (Hh > 0.02) & (Hh < 0.12)))
 ear_ring_px = dil(ear_ring_px, 1) & M['earring']
 base = fill(base, ~dil(ear_ring_px, 2) & (lum > 150), dil(ear_ring_px, 2), 5)
-ahoge_px = dil(M['ahoge'], 3) & fg & poly([(440, 60), (652, 60), (652, 300), (440, 300)])
+ahoge_px = fg & ((dil(M['ahoge'], 7) & ~M['headdress'] & ~M['head']) | M['ahoge'])
 base_no_ahoge = inpaint(base, dil(ahoge_px, 2) & M['headdress'], 5)
 
 # ------------------------------------------------------------ classification
@@ -143,6 +144,11 @@ for s, e in EYES.items():
     cv2.floodFill(ff, np.zeros((h_ + 2, w_ + 2), np.uint8), (0, 0), 1)
     holes = (ff == 0)
     lash_zone[s] = (blob | holes | (band > 0) & (lum < 200)) & box & ~eye_open[s]
+    # little dark lashes sticking out of the band (they were cut off by the opening): keep them with the lash
+    spikes = box & ~eye_open[s] & (lum < 135) & ~lash_zone[s]
+    n, lab, st, _ = cv2.connectedComponentsWithStats(spikes.astype(np.uint8), connectivity=8)
+    touch = set(np.unique(lab[dil(lash_zone[s], 2) & spikes])) - {0}
+    lash_zone[s] |= np.isin(lab, [i for i in touch if st[i, 4] < 300])
 
 mouth_m = np.zeros_like(fg); x0, y0, x1, y1 = MOUTH_BOX; mouth_m[y0:y1, x0:x1] = True
 brow_m = np.zeros_like(fg)
@@ -175,7 +181,14 @@ small = np.isin(lab, [i for i in range(1, n) if st[i, 4] < 60])
 face_vis |= small
 face_vis &= face_area
 
+# the ear is skin: it goes to the face layer with its outline
+ear = M['ear'] & fg
+face_vis |= ear
 front_hair = head & ~face_vis & ~dil(lash_zone['L'] | lash_zone['R'], 1)
+# chopped bits of strand outline right above the lashes look like stray dashes once the eye closes: drop them
+near = dil(lash_zone['L'] | lash_zone['R'], 12) & front_hair
+n, lab, st, _ = cv2.connectedComponentsWithStats(near.astype(np.uint8), connectivity=8)
+front_hair &= ~np.isin(lab, [i for i in range(1, n) if st[i, 4] < 90])
 
 # ------------------------------------------------------------------ layers
 layers = []
@@ -201,9 +214,14 @@ alpha_src = src[..., 3].astype(np.float32) / 255.0
 
 # back hair: silhouette of head + headdress, filled with shadowed hair colour
 back = dil(head | headdress, 4)
-back_rgb = np.zeros_like(rgb0); back_rgb[:] = (214, 150, 166)
+# texture: the visible hair, streaked downwards and put in shadow, so a head turn shows hair, not a flat blob
+hair_src = head & (lum > 150) & ~(skin & (S < 0.12))
+back_rgb = fill(base.copy(), hair_src, back & ~hair_src, 8).astype(np.float32)
+back_rgb = cv2.blur(back_rgb, (3, 31))
+back_rgb = back_rgb * np.array([0.93, 0.83, 0.87])
 edge = back & ~ero(back, 3)
 back_rgb[edge] = (120, 70, 82)
+back_rgb = np.clip(back_rgb, 0, 255).astype(np.uint8)
 save_layer('back_hair', back_rgb, soft(back, 0.8), 0)
 
 # body: everything else, plus neck under the chin and the area hidden by the tail
@@ -233,33 +251,72 @@ hd_rgb[headdress] = base_no_ahoge[headdress]
 save_layer('headdress', hd_rgb, soft(hd_ext, 0.6) * np.where(headdress, alpha_src, 1), 25)
 
 # face: skin with eyes, lashes, mouth, brows and hair painted over with skin
-face_ext = M['face'] | M['temple']
+face_ext = M['face'] | M['temple'] | ear
 remove = face_ext & ~face_vis | dil(eye_open['L'] | eye_open['R'], 3) | dil(lash_zone['L'] | lash_zone['R'], 3) \
     | dil(mouth_m & (lum < 190), 2) | brow_m
 # light highlights hugging the lash would look like a pale bar once the lid closes: paint them as eyelid skin
 remove |= dil(lash_zone['L'] | lash_zone['R'], 9) & face_area & (lum > 190)
 skin_tone = np.array([252, 233, 228], np.float32)
 keep = face_vis & ~remove
-# painted skin takes the local skin colour (normalised blur of nearby kept skin pixels)
-ks = (keep & (lum > 200)).astype(np.float32)
-num = cv2.GaussianBlur(base.astype(np.float32) * ks[..., None], (0, 0), 14)
-den = cv2.GaussianBlur(ks, (0, 0), 14)[..., None]
-local = np.where(den > 0.02, num / np.maximum(den, 1e-3), skin_tone)
-fr = np.where(keep[..., None], base.astype(np.float32), local)
+# painted skin is inpainted from the nearby clean skin, so it continues the original shading
+painted = ~keep & face_ext
+skin_src = keep & (lum > 200) & (S > 0.045) & ~dil(remove, 2)
+fr = fill(base.copy(), skin_src, painted, 8).astype(np.float32)
+fr = np.where(painted[..., None], cv2.GaussianBlur(fr, (0, 0), 2.5), fr)
+# match the painted eye sockets to the skin tone right around them (the original has pink shading there)
+for s_ in ('L', 'R'):
+    reg = dil(eye_open[s_] | lash_zone[s_], 3) & painted
+    ring = dil(reg, 12) & ~dil(reg, 4) & keep & (lum > 190)
+    gain = base[ring].astype(np.float32).mean(0) / np.maximum(fr[reg].mean(0), 1)
+    wgt = cv2.GaussianBlur(dil(reg, 3).astype(np.float32), (0, 0), 3)[..., None] * painted[..., None]
+    fr = fr * (1 + (gain - 1) * wgt)
 # soften the seam between kept skin and the painted skin
 blur = cv2.GaussianBlur(fr, (0, 0), 2.0)
 seam = (dil(keep, 2) & ~ero(keep, 2)) | ~keep
 fr = np.where((seam & ~(keep & (lum < 170)))[..., None], blur, fr)
 # a soft hair shadow on the forehead, like the original
 shadow_y = np.clip((np.arange(H)[:, None] - 300) / 90.0, 0, 1)
-painted = ~keep & face_ext
 fr = np.where(painted[..., None], fr * (0.93 + 0.07 * shadow_y[..., None]) + np.array([4, -6, -2]) * (1 - shadow_y[..., None]), fr)
 # eyelid: a soft pink shade where the lash band was, so a closed eye reads as a lid, not a gap
-lid = cv2.GaussianBlur((dil(lash_zone['L'] | lash_zone['R'], 6) & painted).astype(np.float32), (0, 0), 3)[..., None]
-fr = fr * (1 - lid * np.array([0.03, 0.09, 0.08]))
+lid = cv2.GaussianBlur((dil(lash_zone['L'] | lash_zone['R'], 5) & painted).astype(np.float32), (0, 0), 4)[..., None]
+fr = fr * (1 - lid * np.array([0.03, 0.12, 0.10]))
 face_rgb = np.clip(fr, 0, 255).astype(np.uint8)
 face_alpha = soft(face_ext, 0.6) * np.where(face_vis & ~M['face'], alpha_src, 1)
 save_layer('face', face_rgb, face_alpha, 30)
+
+LASH = (84, 36, 46)
+
+def draw_stroke(pts, outer_left, width, flick=False, SS=4, color=None):
+    color = color or LASH
+    """tapered stroke along pts (thin at the inner end, thick towards the outer end)"""
+    im = Image.new('RGBA', (W * 1, H * 1), (0, 0, 0, 0))
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    x0, y0 = int(min(xs)) - 24, int(min(ys)) - 24
+    x1, y1 = int(max(xs)) + 24, int(max(ys)) + 24
+    big = Image.new('RGBA', ((x1 - x0) * SS, (y1 - y0) * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(big)
+    n = len(pts)
+    P_ = [((x - x0) * SS, (y - y0) * SS) for x, y in pts]
+    for i in range(n - 1):
+        t = i / (n - 2)
+        u = 1 - t if outer_left else t          # 0 inner .. 1 outer
+        w = width * (0.25 + 0.95 * math.sin(math.pi * min(1.0, 0.15 + u * 0.8)) ** 0.8)
+        r = w * SS / 2
+        for q in (P_[i], P_[i + 1]):
+            d.ellipse([q[0] - r, q[1] - r, q[0] + r, q[1] + r], fill=color + (255,))
+    if flick:
+        end = P_[0] if outer_left else P_[-1]
+        sgn = -1 if outer_left else 1
+        for k, (dx, dy) in enumerate(((9, -3), (8, 3))):
+            tip = (end[0] + sgn * dx * SS, end[1] + dy * SS)
+            for j in range(12):
+                tt = j / 11
+                q = (end[0] + (tip[0] - end[0]) * tt, end[1] + (tip[1] - end[1]) * tt)
+                r = (1.6 * (1 - tt) + 0.3) * SS
+                d.ellipse([q[0] - r, q[1] - r, q[0] + r, q[1] + r], fill=color + (255,))
+    big = big.resize((x1 - x0, y1 - y0), Image.LANCZOS)
+    im.paste(big, (x0, y0))
+    return im
 
 # eyes ---------------------------------------------------------------------
 rig_eyes = {}
@@ -272,7 +329,7 @@ for s, e in EYES.items():
     yy = np.arange(H)[:, None] - top_y[None, :]
     shade = np.clip(1 - yy / 14.0, 0, 1)[..., None]
     wrgb = (wrgb * (1 - shade * 0.25) + np.array([238, 190, 200]) * shade * 0.25).astype(np.uint8)
-    walpha = soft(dil(op, 2), 0.7)
+    walpha = soft(dil(op, 1), 0.7)
     save_layer(f'eye{s}_white', wrgb, walpha, 40, dict(eye=s))
 
     # iris: original pixels inside the ellipse, hidden part filled from the iris itself
@@ -289,30 +346,41 @@ for s, e in EYES.items():
     la = soft(lz, 0.6)
     save_layer(f'eye{s}_lash', rgb0, la, 43, dict(eye=s))
 
+    # closed eye (∪) and happy closed eye (∩): painted in the lash colour, thick in the middle,
+    # with two little lashes flicking out of the outer corner (screen-left eye: outer = left)
+    bot = sorted(e['bot'][:-1])
+    left, right = e['top'][0], e['top'][-1]
+    outer_left = s == 'L'
+    xs_ = np.linspace(left[0] - 4, right[0] + 2, 48)
+    by = np.interp(xs_, [p[0] for p in bot], [p[1] for p in bot])
+    tline = np.interp(xs_, [left[0], right[0]], [left[1], right[1]])
+    closed_pts = list(zip(xs_, by * 0.82 + tline * 0.18 - 2))
+    hgt = max(p[1] for p in bot) - min(p[1] for p in e['top'])
+    t_ = np.linspace(0, 1, 48)
+    smile_pts = list(zip(xs_, tline + 4 - 4 * t_ * (1 - t_) * hgt * 0.42))
+    for nm, pts in (('closed', closed_pts), ('smile', smile_pts)):
+        im = draw_stroke(pts, outer_left, 5.2, flick=(nm == 'closed'))
+        a_ = np.array(im)
+        save_layer(f'eye{s}_{nm}', a_[..., :3], a_[..., 3] / 255.0, 44, dict(eye=s))
+
     rig_eyes[s] = dict(top=[[x - CANVAS['x'], y - CANVAS['y']] for x, y in e['top']],
                        bot=[[x - CANVAS['x'], y - CANVAS['y']] for x, y in e['bot']],
                        iris=[cx - CANVAS['x'], cy - CANVAS['y'], rx, ry])
 
-# brows: painted thin arcs in the line colour
+# brows: painted thin arcs (they sit under the bangs, so they only peek through the gaps)
 LINE = (122, 64, 74)
+BROW = (146, 82, 94)
 for s, e in EYES.items():
-    im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
     pts = e['brow']
-    # quadratic bezier through 3 points, tapered
     seg = []
     for i in range(41):
         t = i / 40
         x = (1 - t) ** 2 * pts[0][0] + 2 * (1 - t) * t * pts[1][0] + t * t * pts[2][0]
         y = (1 - t) ** 2 * pts[0][1] + 2 * (1 - t) * t * pts[1][1] + t * t * pts[2][1]
         seg.append((x, y))
-    for i in range(40):
-        t = i / 40
-        wdt = 1.0 + 2.6 * math.sin(math.pi * min(1, t * 1.15))
-        d.line([seg[i], seg[i + 1]], fill=LINE + (255,), width=max(1, int(round(wdt))))
-    im = im.filter(ImageFilter.GaussianBlur(0.6))
+    im = draw_stroke(seg, s == 'L', 2.6, color=BROW)
     a = np.array(im)
-    save_layer(f'brow{s}', a[..., :3], a[..., 3] / 255.0, 45, dict(eye=s))
+    save_layer(f'brow{s}', a[..., :3], a[..., 3] / 255.0 * 0.85, 45, dict(eye=s))
 
 # mouth closed: original line
 mx0, my0, mx1, my1 = MOUTH_BOX
@@ -367,7 +435,7 @@ save_layer('blush', a[..., :3], a[..., 3] / 255.0, 52)
 # front hair: everything of the head that is not skin
 fh_alpha = soft(front_hair, 0.5) * alpha_src
 save_layer('front_hair', base, fh_alpha, 60)
-save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=[648 - CANVAS['x'], 100 - CANVAS['y']]))
+save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=[700 - CANVAS['x'], 100 - CANVAS['y']]))
 er_a = soft(ear_ring_px, 0.5) * alpha_src
 save_layer('earring', rgb0, er_a, 70, dict(pivot=[1000 - CANVAS['x'], 462 - CANVAS['y']]))
 

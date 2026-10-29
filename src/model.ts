@@ -56,6 +56,10 @@ export const PART_CONF: Record<string, PartConf> = {
   eyeR_iris: { depth: 0.14, head: true, cell: 6 },
   eyeL_lash: { depth: 0.13, head: true, cell: 5 },
   eyeR_lash: { depth: 0.13, head: true, cell: 5 },
+  eyeL_closed: { depth: 0.13, head: true, cell: 5 },
+  eyeR_closed: { depth: 0.13, head: true, cell: 5 },
+  eyeL_smile: { depth: 0.13, head: true, cell: 5 },
+  eyeR_smile: { depth: 0.13, head: true, cell: 5 },
   browL: { depth: 0.18, head: true, cell: 5 },
   browR: { depth: 0.18, head: true, cell: 5 },
   mouth_closed: { depth: 0.1, head: true, cell: 5 },
@@ -165,6 +169,8 @@ export class Model {
         case 'eyeR_white': {
           const b = interp(eye!.bot, x);
           y = b + (y - b) * clamp(eyeOpen, 0, 1.25);
+          // 快閉上時兩端也往中間收，眼角不會露出白邊
+          x = eye!.cx + (x - eye!.cx) * (0.72 + 0.28 * clamp(eyeOpen, 0, 1));
           break;
         }
         case 'eyeL_iris':
@@ -243,15 +249,25 @@ export class Model {
           break;
         }
         case 'tail':
-        case 'ahoge':
-        case 'earring': {
+        case 'ahoge': {
+          // 兩節彎曲：根部跟著第一節轉，越往末端再加上第二節的彎
           const [px, py] = layer.pivot!;
-          const len = layer.name === 'tail' ? 640 : layer.name === 'ahoge' ? 230 : 40;
-          const amp = layer.name === 'tail' ? 0.22 : layer.name === 'ahoge' ? 0.5 : 0.6;
-          const v = layer.name === 'tail' ? p.tail : layer.name === 'ahoge' ? p.ahoge : p.earring;
+          const tail = layer.name === 'tail';
+          const len = tail ? 640 : 250;
+          const v1 = tail ? p.tail : p.ahoge;
+          const v2 = tail ? p.tail2 : p.ahoge2;
           const dx = x - px, dy = y - py;
           const t = clamp(Math.hypot(dx, dy) / len, 0, 1);
-          const a = v * amp * (layer.name === 'earring' ? Math.min(1, t * 2) : t);
+          const a = (tail ? 0.2 : 0.22) * v1 * t + (tail ? 0.16 : 0.18) * v2 * t * t;
+          x = px + dx * Math.cos(a) - dy * Math.sin(a);
+          y = py + dx * Math.sin(a) + dy * Math.cos(a);
+          break;
+        }
+        case 'earring': {
+          const [px, py] = layer.pivot!;
+          const dx = x - px, dy = y - py;
+          const t = clamp(Math.hypot(dx, dy) / 40, 0, 1);
+          const a = p.earring * 0.6 * Math.min(1, t * 2);
           x = px + dx * Math.cos(a) - dy * Math.sin(a);
           y = py + dx * Math.sin(a) + dy * Math.cos(a);
           break;
@@ -267,8 +283,11 @@ export class Model {
         const u = (x - hcx) / R, v = (y - hcy) / R;
         const zc = Math.sqrt(Math.max(0, 1 - 0.75 * (u * u + v * v)));
         // 球面：中間（鼻子附近）移動最多，邊緣移動少 → 一邊被壓扁、一邊被拉開
-        let dx = ax * R * (0.075 * conf.depth + 0.085 * zc);
-        let dy = -ay * R * (0.055 * conf.depth + 0.065 * zc);
+        // 瀏海兩側其實在頭的側面（比較後面），深度往兩側遞減，才不會和馬尾、後髮拉開縫
+        let depth = conf.depth;
+        if (layer.name === 'front_hair') depth = depth + (-0.2 - depth) * smooth(0.45, 0.95, Math.abs(u));
+        let dx = ax * R * (0.075 * depth + 0.085 * zc);
+        let dy = -ay * R * (0.055 * depth + 0.065 * zc);
         // 轉向的那一側稍微壓縮（透視）
         dx -= ax * R * 0.03 * u * Math.abs(u);
         dy += ay * R * 0.02 * v * Math.abs(v);
@@ -295,6 +314,16 @@ export class Model {
 
   /** 各部位的透明度（張嘴/閉嘴切換、臉紅） */
   alpha(name: string, p: Params) {
+    const side = name.startsWith('eyeL') ? 'L' : name.startsWith('eyeR') ? 'R' : null;
+    if (side) {
+      const open = side === 'L' ? p.eyeLOpen : p.eyeROpen;
+      const shut = 1 - smooth(0.07, 0.2, open); // 0 = 睜開、1 = 閉上
+      const part = name.slice(5);
+      if (part === 'white' || part === 'iris') return smooth(0.02, 0.12, open);
+      if (part === 'lash') return 1 - shut;
+      if (part === 'closed') return shut * (1 - p.eyeSmile);
+      if (part === 'smile') return shut * p.eyeSmile;
+    }
     switch (name) {
       case 'mouth_closed':
         return 1 - smooth(0.06, 0.3, p.mouthOpen);
