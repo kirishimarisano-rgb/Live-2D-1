@@ -36,11 +36,11 @@ export class Pendulum {
 
 export class HairPhysics {
   parts = {
-    hairFront: new Pendulum({ gravity: 30, stiff: 60, damping: 5.5, inertia: 0.0045, scale: 2.2 }),
-    hairBack: new Pendulum({ gravity: 22, stiff: 30, damping: 3.8, inertia: 0.0055, scale: 2.0 }),
-    tail: new Pendulum({ gravity: 14, stiff: 14, damping: 2.2, inertia: 0.006, scale: 1.8 }),
-    ahoge: new Pendulum({ gravity: 10, stiff: 120, damping: 3.5, inertia: 0.008, scale: 2.4 }),
-    earring: new Pendulum({ gravity: 60, stiff: 6, damping: 2.6, inertia: 0.009, scale: 1.4 }),
+    hairFront: new Pendulum({ gravity: 30, stiff: 60, damping: 5.5, inertia: 0.022, scale: 2.2 }),
+    hairBack: new Pendulum({ gravity: 22, stiff: 30, damping: 3.8, inertia: 0.026, scale: 2.0 }),
+    tail: new Pendulum({ gravity: 14, stiff: 14, damping: 2.2, inertia: 0.03, scale: 1.8 }),
+    ahoge: new Pendulum({ gravity: 10, stiff: 120, damping: 3.5, inertia: 0.035, scale: 2.4 }),
+    earring: new Pendulum({ gravity: 60, stiff: 6, damping: 2.6, inertia: 0.04, scale: 1.4 }),
   };
   private lastX = 0;
   private lastV = 0;

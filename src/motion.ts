@@ -25,7 +25,7 @@ export class Motion {
   private idleLookAt = 0;
   private idleTarget: [number, number] = [0, 0];
   // 眨眼
-  private nextBlink = 1.5;
+  private nextBlink = rand(2.2, 4);
   private blinkT = -1;
   private doubleBlink = false;
   // 反應
@@ -212,7 +212,7 @@ export class Motion {
     if (this.mic >= 0) {
       p.mouthOpen = Math.max(p.mouthOpen, this.mic);
       p.mouthForm = lerp(p.mouthForm, 0.3, clamp(this.mic * 2, 0, 1));
-    } else if (this.talk > 0) {
+    } else if (this.talk > 0 && this.reaction !== 'puff') {
       const ph = this.talkPhase;
       const flap = 0.5 + 0.5 * Math.sin(ph * 17) * Math.sin(ph * 5.3 + 1);
       p.mouthOpen = Math.max(p.mouthOpen, this.talk * (0.08 + 0.42 * flap));

@@ -68,6 +68,7 @@ for (const debug of [false, true]) {
       await page.reload();
       await page.waitForSelector('body[data-ready="1"]');
       await run(page);
+      await page.waitForTimeout(400); // 等對話框淡入
       await page.screenshot({ path: `screenshots/${prefix}-${name}.png` });
     }
   }
