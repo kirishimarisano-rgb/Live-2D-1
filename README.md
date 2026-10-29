@@ -15,6 +15,7 @@
 - 按「🎤 對嘴」：允許麥克風後，她的嘴巴會跟著你的聲音動
 - 右下角的對話框會隨機說話
 - 網址後面加 `?debug=1`（例如 `dist/index.html?debug=1`）：顯示網格線和所有參數滑桿
+- 背景的窗外會跟著你電腦現在的時間變成白天、黃昏或晚上；想固定的話加 `?hour=20`（0～24，可以和 debug 一起用：`?debug=1&hour=18`）
 
 **跑完先玩什麼**：打開後別動滑鼠，等她打瞌睡，再戳她一下喵。
 
@@ -74,6 +75,8 @@ node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
 | 害羞、鼓臉、驚醒的表情 | `src/motion.ts` | 「反應」那段，每種反應各自設定要改哪些參數 |
 | 頭髮、馬尾、呆毛、耳環的晃法 | `src/physics.ts` | `HairPhysics.parts`：`stiff` 越大越硬、`damping` 越大越快停、`inertia` 越大越容易被甩 |
 | 網格密度 | `src/model.ts` | `PART_CONF` 的 `cell`（px，越小越細） |
+| 呆毛、馬尾的待機晃動 | `src/physics.ts` | `update()` 裡 `this.ahoge.step(...)`、`this.tail.step(...)` 的正弦波大小；`breeze = 0` 就完全不晃 |
+| 背景（窗戶、天空顏色、花瓣、串燈） | `src/background.ts` | `SKY` 是每個時刻的天空顏色；花瓣數量在建構子的 `26` |
 | 麥克風靈敏度 | `src/lipsync.ts` | `(rms - ...) * 9` 的 `9` |
 
 ## 換成別的角色圖
@@ -82,7 +85,7 @@ node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
 
 1. 每個部位一張 PNG，**和整張圖同樣大小、對齊**，被遮住的地方也要畫出來（例如瀏海底下的額頭、睫毛底下的眼白）。檔名照這張表：
 
-   `back_hair` 後髮 · `body` 身體（含脖子）· `tail` 馬尾（沒有就省略）· `headdress` 頭飾 · `face` 臉（不含眼睛和嘴）· `eyeL_white` `eyeR_white` 眼白 · `eyeL_iris` `eyeR_iris` 瞳孔（畫成完整的圓）· `eyeL_lash` `eyeR_lash` 上眼皮含睫毛 · `browL` `browR` 眉毛 · `mouth_closed` `mouth_open` 閉嘴和張嘴 · `blush` 臉紅 · `front_hair` 瀏海與側髮 · `ahoge` 呆毛 · `earring` 飾品
+   `back_hair` 後髮 · `body` 身體（含脖子）· `tail` 馬尾（沒有就省略）· `headdress` 頭飾 · `face` 臉（不含眼睛和嘴）· `eyeL_white` `eyeR_white` 眼白 · `eyeL_iris` `eyeR_iris` 瞳孔（畫成完整的圓）· `eyeL_lash` `eyeR_lash` 上眼皮含睫毛 · `eyeL_closed` `eyeR_closed` 閉眼的線 · `eyeL_smile` `eyeR_smile` 笑眼（^ ^）的線 · `browL` `browR` 眉毛 · `mouth_closed` `mouth_open` 閉嘴和張嘴 · `blush` 臉紅 · `front_hair` 瀏海與側髮 · `ahoge` 呆毛 · `earring` 飾品
 
    （`L` 是畫面左邊那一隻）
 

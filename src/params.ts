@@ -28,7 +28,9 @@ export const PARAMS: ParamDef[] = [
   { id: 'hairFront', name: '瀏海 擺動', min: -1, max: 1, def: 0 },
   { id: 'hairBack', name: '後髮 擺動', min: -1, max: 1, def: 0 },
   { id: 'tail', name: '側馬尾 擺動', min: -1, max: 1, def: 0 },
+  { id: 'tail2', name: '側馬尾 髮尾', min: -1, max: 1, def: 0 },
   { id: 'ahoge', name: '呆毛 擺動', min: -1, max: 1, def: 0 },
+  { id: 'ahoge2', name: '呆毛 末端', min: -1, max: 1, def: 0 },
   { id: 'earring', name: '耳環 擺動', min: -1, max: 1, def: 0 },
 ];
 

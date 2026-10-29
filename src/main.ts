@@ -8,6 +8,7 @@ import { Motion } from './motion';
 import { LipSync } from './lipsync';
 import { Bubble, loadLines } from './bubble';
 import { DebugPanel } from './debug';
+import { Background } from './background';
 
 const rig = rigJson as unknown as Rig;
 const images = import.meta.glob('./assets/parts/*.png', { eager: true, query: '?inline', import: 'default' }) as Record<string, string>;
@@ -29,6 +30,9 @@ interface Part {
 async function main() {
   const qs = new URLSearchParams(location.search);
   const debugMode = qs.get('debug') === '1';
+  const bg = new Background(document.getElementById('bg') as HTMLCanvasElement);
+  // ?hour=20 可以固定背景的時刻（0～24），不加就用現在的時間
+  if (qs.has('hour')) bg.hour = parseFloat(qs.get('hour')!);
   const canvas = document.getElementById('gl') as HTMLCanvasElement;
   const renderer = new Renderer(canvas, rig.canvas.w, rig.canvas.h);
   const model = new Model(rig);
@@ -173,10 +177,12 @@ async function main() {
       if (motion.sleeping) bubble.say('sleep', false);
       else if (!bubble.visible) bubble.say(motion.t < 5 ? 'greeting' : 'idle', false);
     }
+    bg.update(dt);
     render();
   };
 
   const render = () => {
+    bg.draw();
     for (const part of parts) {
       model.deform(part.layer, part.item.mesh, params);
       part.item.alpha = part.item.hidden ? 0 : model.alpha(part.layer.name, params);

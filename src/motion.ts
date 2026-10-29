@@ -136,8 +136,9 @@ export class Motion {
     // ---- 打瞌睡的樣子 ----
     if (sl > 0.001) {
       const nod = Math.max(0, Math.sin(t * 0.9)) ** 6; // 偶爾點一下頭
-      const droop = clamp(0.25 + 0.2 * Math.sin(t * 0.7), 0, 1) * (1 - nod);
-      eyeOpen = lerp(eyeOpen, droop * 0.25, ease(sl));
+      // 大部分時間閉著，點頭驚一下時勉強睜開一條縫
+      const peek = Math.max(0, Math.sin(t * 0.9 - 0.5)) ** 10;
+      eyeOpen = lerp(eyeOpen, peek * 0.45, ease(sl));
       p.angleY = lerp(p.angleY, -16 - nod * 8, sl);
       p.angleZ = lerp(p.angleZ, 9 + 2 * Math.sin(t * 0.4), sl);
       p.angleX = lerp(p.angleX, -4, sl);
