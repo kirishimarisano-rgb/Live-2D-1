@@ -108,8 +108,6 @@ M = {k: poly(v) & np.ones_like(fg) for k, v in P.items()}
 
 # ------------------------------------------------- inpaint small overlays first
 base = rgb0.copy()
-earring = M['earring'] & fg & (np.array(Image.fromarray(rgb0).convert('L')) < 200) | (M['earring'] & fg & ~poly([(990,462),(1000,462),(1000,470),(990,470)]))
-earring = M['earring'] & fg
 # earring alpha: only the dark ribbon / beads, not the hair around them
 hsv = cv2.cvtColor(rgb0, cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
 Hh, S, V = hsv[..., 0] / 255.0, hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
@@ -202,7 +200,6 @@ def soft(m, r=1.0):
 alpha_src = src[..., 3].astype(np.float32) / 255.0
 
 # back hair: silhouette of head + headdress, filled with shadowed hair colour
-back = dil(M['head'] & fg | headdress, 6) & ~dil(M['face'], -1 if False else 0)
 back = dil(head | headdress, 4)
 back_rgb = np.zeros_like(rgb0); back_rgb[:] = (214, 150, 166)
 edge = back & ~ero(back, 3)
@@ -284,7 +281,6 @@ for s, e in EYES.items():
     known = ir & op & ~(lum > 246) | (ir & op & (S > 0.08))
     irgb = rgb0.copy(); irgb[~known] = 0
     irgb = fill(irgb, known, ir & ~known, 6)
-    # white pixels inside the ellipse but in the opening are eye-white, keep them iris-pink
     ia = soft(ir, 0.8)
     save_layer(f'eye{s}_iris', irgb, ia, 41, dict(eye=s, center=[cx - CANVAS['x'], cy - CANVAS['y']]))
 
@@ -368,7 +364,7 @@ im = Image.alpha_composite(im, hatch)
 a = np.array(im)
 save_layer('blush', a[..., :3], a[..., 3] / 255.0, 52)
 
-# front hair (+ cheek-puff and everything else of the head)
+# front hair: everything of the head that is not skin
 fh_alpha = soft(front_hair, 0.5) * alpha_src
 save_layer('front_hair', base, fh_alpha, 60)
 save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=[648 - CANVAS['x'], 100 - CANVAS['y']]))
