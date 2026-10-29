@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>看板娘</title>
+<!--LINES-->
+<style>
+  :root { --ink: #6b3a46; --paper: #fff8fa; --accent: #f08aa4; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #fde7ee 0, #f4eaf7 45%, #e7eefb 100%);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    color: var(--ink); overflow: hidden;
+  }
+  .hint { position: fixed; left: 24px; top: 20px; max-width: 420px; line-height: 1.7; font-size: 14px; opacity: .8; }
+  .hint b { color: #c2577a; }
+  #stage { position: fixed; right: 0; bottom: 0; height: min(92vh, 760px); aspect-ratio: 900 / 1036; touch-action: none; }
+  #stage canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+  #bubble {
+    position: fixed; right: 16px; bottom: 16px; max-width: 260px; min-height: 22px;
+    background: var(--paper); border: 2px solid #f3b7c7; border-radius: 16px; padding: 10px 14px;
+    font-size: 15px; line-height: 1.5; box-shadow: 0 6px 18px rgba(170, 80, 110, .18);
+    opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5;
+  }
+  #bubble.show { opacity: 1; transform: none; }
+  #mic {
+    position: fixed; right: calc(min(92vh, 760px) * 0.87 + 8px); bottom: 16px; z-index: 6;
+    border: 2px solid #f3b7c7; background: #fff; color: var(--ink); border-radius: 999px;
+    padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  #mic.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  @media (max-width: 600px) { .hint { display: none; } #stage { height: 70vh; } #mic { right: auto; left: 12px; } }
+</style>
+</head>
+<body>
+<div class="hint">
+  <b>看板娘</b>：眼睛和頭會跟著滑鼠轉。<br />
+  戳她的<b>頭</b>會害羞，戳<b>臉頰</b>會鼓起來，<br />
+  滑鼠太久不動她會<b>打瞌睡</b>，按「🎤 對嘴」她會跟著你的聲音張嘴。<br />
+  網址加上 <code>?debug=1</code> 可以看網格線、自己拉參數。
+</div>
+<div id="stage"><canvas id="gl"></canvas></div>
+<button id="mic" title="讓她的嘴巴跟著你的聲音動">🎤 對嘴</button>
+<div id="bubble"></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

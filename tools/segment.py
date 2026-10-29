@@ -40,9 +40,23 @@ def ero(m, r):
     return cv2.erode(m.astype(np.uint8), k) > 0
 
 def fill(img, known, target, r=6):
-    """inpaint `target` using only `known` pixels as the source"""
-    mask = (target | (~known & dil(target, r + 3))) & ~(known & ~target)
-    return cv2.inpaint(np.ascontiguousarray(img), mask.astype(np.uint8) * 255, r, cv2.INPAINT_TELEA)
+    """inpaint `target` using only `known` pixels as the source (works on a crop around the target)"""
+    ys, xs = np.nonzero(target)
+    if not len(xs):
+        return img
+    pad = 40
+    x0, x1 = max(0, xs.min() - pad), min(W, xs.max() + pad + 1)
+    y0, y1 = max(0, ys.min() - pad), min(H, ys.max() + pad + 1)
+    sub = np.ascontiguousarray(img[y0:y1, x0:x1])
+    kn = known[y0:y1, x0:x1] & ~target[y0:y1, x0:x1]
+    if not kn.any():
+        return img
+    # every unknown pixel of the crop is masked, so no garbage colour is used as a source
+    res = cv2.inpaint(sub, (~kn).astype(np.uint8) * 255, r, cv2.INPAINT_TELEA)
+    out = img.copy()
+    t = target[y0:y1, x0:x1]
+    out[y0:y1, x0:x1][t] = res[t]
+    return out
 
 def inpaint(img, mask, r=6):
     return cv2.inpaint(np.ascontiguousarray(img), mask.astype(np.uint8) * 255, r, cv2.INPAINT_TELEA)
@@ -102,12 +116,12 @@ Hh, S, V = hsv[..., 0] / 255.0, hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
 lum = np.array(Image.fromarray(rgb0).convert('L')).astype(np.float32)
 ear_ring_px = M['earring'] & fg & ((lum < 150) | ((S > 0.35) & (Hh > 0.02) & (Hh < 0.12)))
 ear_ring_px = dil(ear_ring_px, 1) & M['earring']
-base = inpaint(base, dil(ear_ring_px, 2), 5)
+base = fill(base, ~dil(ear_ring_px, 2) & (lum > 150), dil(ear_ring_px, 2), 5)
 ahoge_px = dil(M['ahoge'], 3) & fg & poly([(440, 60), (652, 60), (652, 300), (440, 300)])
 base_no_ahoge = inpaint(base, dil(ahoge_px, 2) & M['headdress'], 5)
 
 # ------------------------------------------------------------ classification
-tail = M['tail'] & fg & ~(M['head'] & ~poly([(1036, 80), (1300, 80), (1300, 900), (1036, 900)]))
+tail = (M['tail'] | (dil(M['tail'], 4) & (lum < 150))) & fg & ~(M['head'] & ~poly([(1036, 80), (1300, 80), (1300, 900), (1036, 900)]))
 head = fg & ~M['body'] & ~tail & ~M['headdress'] & ~ahoge_px
 headdress = M['headdress'] & fg & ~head & ~ahoge_px
 ahoge = ahoge_px & ~head
@@ -148,7 +162,7 @@ ImageDraw.Draw(jaw).line([(632, 486), (662, 530), (700, 560), (750, 580), (795, 
 forced_face |= (np.array(jaw) > 0) & (lum < 170)
 # skin shading around the eyes is pinkish: force it to face
 forced_face |= poly([(640, 452), (725, 440), (728, 488), (640, 492)]) | poly([(806, 412), (900, 405), (905, 448), (812, 450)])
-forced_face |= dil(lash_zone['L'] | lash_zone['R'], 3) | brow_m
+forced_face |= brow_m
 forced_face |= poly([(660, 545), (900, 545), (900, 600), (660, 600)])
 
 face_area = M['face'] & fg
@@ -163,7 +177,7 @@ small = np.isin(lab, [i for i in range(1, n) if st[i, 4] < 60])
 face_vis |= small
 face_vis &= face_area
 
-front_hair = head & ~face_vis
+front_hair = head & ~face_vis & ~dil(lash_zone['L'] | lash_zone['R'], 1)
 
 # ------------------------------------------------------------------ layers
 layers = []
@@ -200,7 +214,9 @@ body = fg & ~head & ~tail & ~headdress & ~ahoge
 body_ext = body | (M['neck_ext']) | (M['tail'] & dil(body, 28) & ~dil(head, 0))
 body_rgb = base.copy()
 body_rgb[~body] = 0
-body_rgb = fill(body_rgb, body, body_ext & ~body, 9)
+body_known = body & (lum > 110)
+body_rgb = fill(body_rgb, body_known, body_ext & ~body, 9)
+body_rgb[body] = base[body]
 neck_fill = M['neck_ext'] & ~body
 ny = np.clip((np.arange(H)[:, None] - 500) / 100.0, 0, 1)
 neck_col = np.array([206, 150, 160]) * (1 - ny[..., None]) + np.array([236, 200, 204]) * ny[..., None]
@@ -214,16 +230,25 @@ save_layer('tail', base, soft(tail, 0.5) * alpha_src, 20, dict(pivot=[1030 - CAN
 # headdress (extend under the hair so the head turn never shows a hole)
 hd_ext = headdress | (dil(headdress, 18) & head)
 hd_rgb = base_no_ahoge.copy(); hd_rgb[~headdress] = 0
-hd_rgb = fill(hd_rgb, headdress, hd_ext & ~headdress, 7)
+hd_known = headdress & (lum > 120)
+hd_rgb = fill(hd_rgb, hd_known, hd_ext & ~headdress, 7)
+hd_rgb[headdress] = base_no_ahoge[headdress]
 save_layer('headdress', hd_rgb, soft(hd_ext, 0.6) * np.where(headdress, alpha_src, 1), 25)
 
 # face: skin with eyes, lashes, mouth, brows and hair painted over with skin
 face_ext = M['face'] | M['temple']
 remove = face_ext & ~face_vis | dil(eye_open['L'] | eye_open['R'], 3) | dil(lash_zone['L'] | lash_zone['R'], 3) \
     | dil(mouth_m & (lum < 190), 2) | brow_m
+# light highlights hugging the lash would look like a pale bar once the lid closes: paint them as eyelid skin
+remove |= dil(lash_zone['L'] | lash_zone['R'], 9) & face_area & (lum > 190)
 skin_tone = np.array([252, 233, 228], np.float32)
 keep = face_vis & ~remove
-fr = np.where(keep[..., None], base.astype(np.float32), skin_tone)
+# painted skin takes the local skin colour (normalised blur of nearby kept skin pixels)
+ks = (keep & (lum > 200)).astype(np.float32)
+num = cv2.GaussianBlur(base.astype(np.float32) * ks[..., None], (0, 0), 14)
+den = cv2.GaussianBlur(ks, (0, 0), 14)[..., None]
+local = np.where(den > 0.02, num / np.maximum(den, 1e-3), skin_tone)
+fr = np.where(keep[..., None], base.astype(np.float32), local)
 # soften the seam between kept skin and the painted skin
 blur = cv2.GaussianBlur(fr, (0, 0), 2.0)
 seam = (dil(keep, 2) & ~ero(keep, 2)) | ~keep
@@ -232,6 +257,9 @@ fr = np.where((seam & ~(keep & (lum < 170)))[..., None], blur, fr)
 shadow_y = np.clip((np.arange(H)[:, None] - 300) / 90.0, 0, 1)
 painted = ~keep & face_ext
 fr = np.where(painted[..., None], fr * (0.93 + 0.07 * shadow_y[..., None]) + np.array([4, -6, -2]) * (1 - shadow_y[..., None]), fr)
+# eyelid: a soft pink shade where the lash band was, so a closed eye reads as a lid, not a gap
+lid = cv2.GaussianBlur((dil(lash_zone['L'] | lash_zone['R'], 6) & painted).astype(np.float32), (0, 0), 3)[..., None]
+fr = fr * (1 - lid * np.array([0.03, 0.09, 0.08]))
 face_rgb = np.clip(fr, 0, 255).astype(np.uint8)
 face_alpha = soft(face_ext, 0.6) * np.where(face_vis & ~M['face'], alpha_src, 1)
 save_layer('face', face_rgb, face_alpha, 30)
@@ -306,12 +334,12 @@ cxm, cym = mw * S4 / 2, 18 * S4
 outline = []
 for i in range(61):
     t = math.pi * i / 60
-    outline.append((cxm - math.cos(t) * 30 * S4, cym + math.sin(t) * 46 * S4))
-top = [(cxm + 30 * S4, cym), (cxm, cym - 3 * S4), (cxm - 30 * S4, cym)]
+    outline.append((cxm - math.cos(t) * 25 * S4, cym + math.sin(t) * 34 * S4))
+top = [(cxm + 25 * S4, cym), (cxm, cym - 3 * S4), (cxm - 25 * S4, cym)]
 shape = outline + top
 d.polygon(shape, fill=(150, 52, 70, 255))
 # tongue
-d.ellipse([cxm - 20 * S4, cym + 20 * S4, cxm + 20 * S4, cym + 52 * S4], fill=(232, 120, 132, 255))
+d.ellipse([cxm - 17 * S4, cym + 16 * S4, cxm + 17 * S4, cym + 40 * S4], fill=(232, 120, 132, 255))
 # re-clip tongue to the mouth shape
 mask = Image.new('L', im.size, 0); ImageDraw.Draw(mask).polygon(shape, fill=255)
 im.putalpha(Image.fromarray(np.minimum(np.array(im)[..., 3], np.array(mask))))
@@ -324,23 +352,26 @@ mo[oy:oy + mh, ox:ox + mw] = np.array(im)
 save_layer('mouth_open', mo[..., :3], mo[..., 3] / 255.0, 51, dict(anchor=[MOUTH_C[0] - CANVAS['x'], MOUTH_C[1] - 2 - CANVAS['y']]))
 
 # blush overlay (for shy / puffed cheeks): soft ellipse + hatch strokes
-im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-for s, (bx, by, brx, bry) in BLUSH.items():
-    g = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(g).ellipse([bx - brx, by - bry, bx + brx, by + bry], fill=(244, 140, 156, 120))
-    g = g.filter(ImageFilter.GaussianBlur(7))
-    im = Image.alpha_composite(im, g)
-    d = ImageDraw.Draw(im)
+ga = Image.new('L', (W, H), 0)
+for s_, (bx, by, brx, bry) in BLUSH.items():
+    ImageDraw.Draw(ga).ellipse([bx - brx, by - bry, bx + brx, by + bry], fill=110)
+ga = ga.filter(ImageFilter.GaussianBlur(8))
+im = Image.new('RGBA', (W, H), (246, 150, 166, 0))
+im.putalpha(ga)
+hatch = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+d = ImageDraw.Draw(hatch)
+for s_, (bx, by, brx, bry) in BLUSH.items():
     for k in range(-2, 3):
-        x = bx + k * 10
-        d.line([(x + 4, by - 8), (x - 3, by + 8)], fill=(226, 92, 112, 200), width=2)
+        x = bx + k * 9
+        d.line([(x + 4, by - 7), (x - 3, by + 7)], fill=(232, 104, 124, 210), width=2)
+im = Image.alpha_composite(im, hatch)
 a = np.array(im)
 save_layer('blush', a[..., :3], a[..., 3] / 255.0, 52)
 
 # front hair (+ cheek-puff and everything else of the head)
 fh_alpha = soft(front_hair, 0.5) * alpha_src
 save_layer('front_hair', base, fh_alpha, 60)
-save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=[700 - CANVAS['x'], 104 - CANVAS['y']]))
+save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=[648 - CANVAS['x'], 100 - CANVAS['y']]))
 er_a = soft(ear_ring_px, 0.5) * alpha_src
 save_layer('earring', rgb0, er_a, 70, dict(pivot=[1000 - CANVAS['x'], 462 - CANVAS['y']]))
 
@@ -395,3 +426,5 @@ show('front_hair', (400, 0, 1300, 976), 1)
 show('tail', (980, 80, 1280, 820), 1)
 show('eyeL_lash', (595, 380, 730, 450), 3)
 show('eyeR_lash', (780, 340, 940, 400), 3)
+show('face', (770, 320, 960, 440), 3)
+show('front_hair', (770, 320, 960, 440), 3)
