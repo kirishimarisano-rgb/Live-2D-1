@@ -1,4 +1,4 @@
-// 彈簧擺：頭髮、側馬尾、呆毛、耳環。
+// 彈簧擺：頭髮、側馬尾、呆毛、耳環、垂耳。
 // 擺錘掛在頭上：頭的加速度會把它甩開，重力和自身的硬度把它拉回來，阻尼讓它慢慢停下。
 export interface PendulumConf {
   gravity: number; // 重力恢復力
@@ -55,6 +55,9 @@ export class HairPhysics {
     hairFront: new Pendulum({ gravity: 30, stiff: 60, damping: 5.5, inertia: 0.022, scale: 2.2 }),
     hairBack: new Pendulum({ gravity: 22, stiff: 30, damping: 3.8, inertia: 0.026, scale: 2.0 }),
     earring: new Pendulum({ gravity: 60, stiff: 6, damping: 2.6, inertia: 0.04, scale: 1.4 }),
+    // 垂耳軟軟的，甩起來慢、會晃好幾下
+    earL: new Pendulum({ gravity: 26, stiff: 18, damping: 2.2, inertia: 0.034, scale: 2.2 }),
+    earR: new Pendulum({ gravity: 26, stiff: 18, damping: 2.2, inertia: 0.034, scale: 2.2 }),
   };
   tail = new Chain(
     new Pendulum({ gravity: 14, stiff: 14, damping: 2.4, inertia: 0.03, scale: 1.8 }),
@@ -107,6 +110,14 @@ export class HairPhysics {
     this.tail.base.kick(s * 0.8);
     this.ahoge.base.kick(s * 1.4);
     this.parts.earring.kick(s * 2.0);
+    this.parts.earL.kick(s * 1.3);
+    this.parts.earR.kick(-s * 1.1);
+  }
+
+  /** 耳朵抖一下（被戳、驚醒時） */
+  flick(strength: number) {
+    this.parts.earL.kick(strength);
+    this.parts.earR.kick(-strength);
   }
 
   write(p: Record<string, number>, tilt: number) {

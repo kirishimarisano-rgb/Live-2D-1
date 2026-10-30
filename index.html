@@ -14,39 +14,62 @@
     color: var(--ink); overflow: hidden;
   }
   #bg { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
-  .hint { position: fixed; left: 20px; bottom: 20px; max-width: 400px; line-height: 1.7; font-size: 13px; z-index: 2;
+  .hint { position: fixed; left: 20px; top: 16px; max-width: 400px; line-height: 1.7; font-size: 13px; z-index: 2;
     background: rgba(255, 250, 252, .78); border: 1px solid #f3c6d3; border-radius: 14px; padding: 10px 14px;
     box-shadow: 0 4px 14px rgba(170, 80, 110, .12); backdrop-filter: blur(4px); }
   .hint b { color: #c2577a; }
-  #stage { z-index: 3; position: fixed; right: 0; bottom: 0; height: min(92vh, 760px); aspect-ratio: 900 / 1036; touch-action: none; }
-  #stage canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
-  #bubble {
+  .stage { position: fixed; touch-action: none; }
+  .stage canvas { width: 100%; height: 100%; display: block; }
+  #stage-pink { z-index: 3; right: 0; bottom: 0; height: min(92vh, 760px); aspect-ratio: 900 / 1036; }
+  /* 女僕的圖在左邊和下面被切掉，畫布多補了一圈，那一圈放到畫面外面 */
+  #stage-maid { --h: min(58vh, 480px); z-index: 2; height: var(--h); aspect-ratio: 736 / 778;
+    left: calc(var(--h) * var(--bleed-left, 0) * -1); bottom: calc(var(--h) * var(--bleed-bottom, 0) * -1); }
+  #bubble-pink {
     position: fixed; right: 16px; bottom: 16px; max-width: 260px; min-height: 22px;
     background: var(--paper); border: 2px solid #f3b7c7; border-radius: 16px; padding: 10px 14px;
     font-size: 15px; line-height: 1.5; box-shadow: 0 6px 18px rgba(170, 80, 110, .18);
     opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5;
   }
-  #bubble.show { opacity: 1; transform: none; }
+  #bubble-pink.show { opacity: 1; transform: none; }
+  /* 女僕的對話框是原圖那種想法泡泡 */
+  #bubble-maid {
+    position: absolute; left: 74%; top: 2%; width: max-content; max-width: 210px; min-height: 22px;
+    background: #fff; border: 3px solid #26386c; border-radius: 50%; padding: 16px 22px;
+    font-size: 14px; line-height: 1.5; color: #26386c; text-align: center;
+    opacity: 0; transform: translateY(8px) scale(.96); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5;
+  }
+  #bubble-maid::before, #bubble-maid::after { content: ''; position: absolute; background: #fff; border: 3px solid #26386c; border-radius: 50%; }
+  #bubble-maid::before { width: 14px; height: 11px; left: 6px; bottom: -16px; }
+  #bubble-maid::after { width: 8px; height: 7px; left: -6px; bottom: -28px; }
+  #bubble-maid.show { opacity: 1; transform: none; }
   #mic {
     position: fixed; right: 16px; top: 14px; z-index: 6;
     border: 2px solid #f3b7c7; background: #fff; color: var(--ink); border-radius: 999px;
     padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
   }
   #mic.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-  @media (max-width: 600px) { .hint { display: none; } #stage { height: 70vh; } #mic { top: 10px; } }
+  @media (max-width: 600px) {
+    .hint { display: none; } #mic { top: 10px; }
+    /* 手機太窄放不下兩個人並排：主角往右挪一點，女僕縮小疊在前面 */
+    #stage-pink { height: 58vh; right: -70px; }
+    #stage-maid { --h: 32vh; z-index: 4; }
+    #bubble-maid { left: 52%; top: -26%; max-width: 150px; font-size: 13px; padding: 10px 14px; }
+  }
 </style>
 </head>
 <body>
 <canvas id="bg"></canvas>
 <div class="hint">
-  <b>看板娘</b>：眼睛和頭會跟著滑鼠轉。<br />
-  戳她的<b>頭</b>會害羞，戳<b>臉頰</b>會鼓起來，<br />
-  滑鼠太久不動她會<b>打瞌睡</b>，按「🎤 對嘴」她會跟著你的聲音張嘴。<br />
+  <b>看板娘</b>：兩個人的眼睛和頭都會跟著滑鼠轉。<br />
+  戳<b>頭</b>會害羞，戳<b>臉頰</b>會鼓起來，另一個會轉頭看，<br />
+  滑鼠太久不動她們會<b>打瞌睡</b>（女僕比較愛睏），偶爾兩個人會聊天。<br />
+  按「🎤 對嘴」她們會跟著你的聲音張嘴。<br />
   網址加上 <code>?debug=1</code> 可以看網格線、自己拉參數。
 </div>
-<div id="stage"><canvas id="gl"></canvas></div>
-<button id="mic" title="讓她的嘴巴跟著你的聲音動">🎤 對嘴</button>
-<div id="bubble"></div>
+<div class="stage" id="stage-maid"><canvas></canvas><div id="bubble-maid"></div></div>
+<div class="stage" id="stage-pink"><canvas></canvas></div>
+<button id="mic" title="讓她們的嘴巴跟著你的聲音動">🎤 對嘴</button>
+<div id="bubble-pink"></div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

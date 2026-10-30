@@ -21,10 +21,14 @@ export interface RigEye {
   top: [number, number][];
   bot: [number, number][];
   iris: [number, number, number, number];
+  /** 瞳孔可以移動的範圍（px），沒寫就依眼睛大小自動算 */
+  move?: [number, number];
+  /** 靜止時瞳孔的偏移，沒寫就放在眼睛正中間 */
+  rest?: [number, number];
 }
 
 export interface Rig {
-  canvas: { x: number; y: number; w: number; h: number };
+  canvas: { x: number; y: number; w: number; h: number; bleed?: { left: number; right: number; bottom: number } };
   headCenter: [number, number];
   headRadius: number;
   neck: [number, number];
@@ -44,31 +48,39 @@ export interface PartConf {
   cell: number;
 }
 
-export const PART_CONF: Record<string, PartConf> = {
-  back_hair: { depth: -0.45, head: true, fade: [560, 680], cell: 24 },
-  body: { depth: 0, head: false, cell: 24 },
-  tail: { depth: -0.3, head: true, cell: 18 },
-  headdress: { depth: -0.3, head: true, cell: 18 },
-  face: { depth: 0, head: true, cell: 14 },
-  eyeL_white: { depth: 0.12, head: true, cell: 6 },
-  eyeR_white: { depth: 0.12, head: true, cell: 6 },
-  eyeL_iris: { depth: 0.14, head: true, cell: 6 },
-  eyeR_iris: { depth: 0.14, head: true, cell: 6 },
-  eyeL_lash: { depth: 0.13, head: true, cell: 5 },
-  eyeR_lash: { depth: 0.13, head: true, cell: 5 },
-  eyeL_closed: { depth: 0.13, head: true, cell: 5 },
-  eyeR_closed: { depth: 0.13, head: true, cell: 5 },
-  eyeL_smile: { depth: 0.13, head: true, cell: 5 },
-  eyeR_smile: { depth: 0.13, head: true, cell: 5 },
-  browL: { depth: 0.18, head: true, cell: 5 },
-  browR: { depth: 0.18, head: true, cell: 5 },
-  mouth_closed: { depth: 0.1, head: true, cell: 5 },
-  mouth_open: { depth: 0.1, head: true, cell: 5 },
-  blush: { depth: 0.1, head: true, cell: 12 },
-  front_hair: { depth: 0.35, head: true, fade: [600, 690], cell: 16 },
-  ahoge: { depth: 0.1, head: true, cell: 8 },
-  earring: { depth: -0.1, head: true, cell: 8 },
-};
+/** 頭髮擺動的範圍：從 y0 開始往下 len 的距離內越來越大，到 fade 這段收回來（接回身體） */
+export interface SwayConf {
+  y0: number;
+  len: number;
+  fade: [number, number];
+}
+
+/** 每個角色不同的數值（畫布座標，單位 px） */
+export interface Tune {
+  hairFront: SwayConf;
+  hairBack: SwayConf;
+  /** 瀏海兩側的深度（側邊的頭髮其實在頭的側面，比較後面） */
+  frontHairSideDepth: number;
+  tailLen: number;
+  ahogeLen: number;
+  /** 耳環／垂耳的長度 */
+  earringLen: number;
+  earLen: number;
+  /** 閉嘴的半寬、張嘴的半寬 */
+  mouthW: number;
+  mouthOpenW: number;
+  /** 鼓臉頰時膨起來的中心，相對於臉紅位置往外偏多少（左、右） */
+  cheekOffset: [number, number];
+  /** 側馬尾的頭部權重在這段 y 遞減一半（下半段比較跟著身體） */
+  tailHeadFade: [number, number];
+  /** 歪頭的最大角度（弧度） */
+  roll: number;
+}
+
+export interface CharConf {
+  parts: Record<string, PartConf>;
+  tune: Tune;
+}
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const smooth = (a: number, b: number, v: number) => {
@@ -111,22 +123,23 @@ function eyeGeo(e: RigEye): EyeGeo {
   const [ix, iy, rx] = e.iris;
   return {
     top, bot, x0, x1, cx, cy,
-    restOff: [cx - ix, cy - iy + 2],
-    rangeX: Math.max(4, (x1 - x0) / 2 - rx * 0.9),
-    rangeY: 5,
+    restOff: e.rest ?? [cx - ix, cy - iy + 2],
+    rangeX: e.move?.[0] ?? Math.max(4, (x1 - x0) / 2 - rx * 0.9),
+    rangeY: e.move?.[1] ?? 5,
   };
 }
 
 export class Model {
   eyes: Record<'L' | 'R', EyeGeo>;
 
-  constructor(public rig: Rig) {
+  constructor(public rig: Rig, public conf: CharConf) {
     this.eyes = { L: eyeGeo(rig.eyes.L), R: eyeGeo(rig.eyes.R) };
   }
 
   /** 把一個部位的網格依參數變形，結果寫進 mesh.pos */
   deform(layer: RigLayer, mesh: Mesh, p: Params) {
-    const conf = PART_CONF[layer.name] ?? { depth: 0, head: true, cell: 16 };
+    const conf = this.conf.parts[layer.name] ?? { depth: 0, head: true, cell: 16 };
+    const tune = this.conf.tune;
     const rig = this.rig;
     const [hcx, hcy] = rig.headCenter;
     const R = rig.headRadius;
@@ -135,7 +148,7 @@ export class Model {
 
     const ax = p.angleX / 30;
     const ay = p.angleY / 30;
-    const roll = (p.angleZ / 30) * 0.17; // 最大約 10°
+    const roll = (p.angleZ / 30) * tune.roll;
     // 身體：越往上越受影響
     const bodyW = (y: number) => clamp((bpy - y) / 480, 0, 1);
     const bodyRot = (p.bodyZ / 10) * 0.07;
@@ -206,7 +219,7 @@ export class Model {
         }
         case 'mouth_closed': {
           const [mx] = rig.mouth;
-          const u = (x - mx) / 42;
+          const u = (x - mx) / tune.mouthW;
           y -= p.mouthForm * 5 * u * u;
           x = mx + (x - mx) * (1 - 0.35 * p.cheekPuff);
           break;
@@ -214,7 +227,7 @@ export class Model {
         case 'mouth_open': {
           const [ax0, ay0] = layer.anchor!;
           const m = p.mouthOpen;
-          const u = (x - ax0) / 30;
+          const u = (x - ax0) / tune.mouthOpenW;
           y = ay0 + (y - ay0) * (0.1 + 0.9 * m);
           x = ax0 + (x - ax0) * (0.75 + 0.25 * m) * (1 + 0.18 * p.mouthForm);
           y -= p.mouthForm * 5 * u * u;
@@ -225,7 +238,7 @@ export class Model {
           if (p.cheekPuff > 0) {
             for (const side of ['L', 'R'] as const) {
               const [bx, by] = rig.blush[side];
-              const ox = side === 'L' ? -26 : 22;
+              const ox = tune.cheekOffset[side === 'L' ? 0 : 1];
               const dx = x - (bx + ox), dy = y - (by + 18);
               const g = Math.exp(-(dx * dx + dy * dy) / (2 * 42 * 42));
               const vx = x - hcx, vy = (y - hcy) * 0.4;
@@ -238,13 +251,15 @@ export class Model {
         }
         case 'front_hair': {
           // 瀏海與側髮擺動：越靠近髮尾擺越大，下緣要接回身體所以又收回來
-          const f = Math.pow(clamp((y - 260) / 330, 0, 1), 1.5) * (1 - smooth(600, 690, y));
+          const h = tune.hairFront;
+          const f = Math.pow(clamp((y - h.y0) / h.len, 0, 1), 1.5) * (1 - smooth(h.fade[0], h.fade[1], y));
           x += p.hairFront * 12 * f;
           y += Math.abs(p.hairFront) * 2 * f;
           break;
         }
         case 'back_hair': {
-          const f = Math.pow(clamp((y - 260) / 330, 0, 1), 1.5) * (1 - smooth(560, 680, y));
+          const h = tune.hairBack;
+          const f = Math.pow(clamp((y - h.y0) / h.len, 0, 1), 1.5) * (1 - smooth(h.fade[0], h.fade[1], y));
           x += p.hairBack * 12 * f;
           break;
         }
@@ -253,7 +268,7 @@ export class Model {
           // 兩節彎曲：根部跟著第一節轉，越往末端再加上第二節的彎
           const [px, py] = layer.pivot!;
           const tail = layer.name === 'tail';
-          const len = tail ? 640 : 250;
+          const len = tail ? tune.tailLen : tune.ahogeLen;
           const v1 = tail ? p.tail : p.ahoge;
           const v2 = tail ? p.tail2 : p.ahoge2;
           const dx = x - px, dy = y - py;
@@ -266,8 +281,20 @@ export class Model {
         case 'earring': {
           const [px, py] = layer.pivot!;
           const dx = x - px, dy = y - py;
-          const t = clamp(Math.hypot(dx, dy) / 40, 0, 1);
+          const t = clamp(Math.hypot(dx, dy) / tune.earringLen, 0, 1);
           const a = p.earring * 0.6 * Math.min(1, t * 2);
+          x = px + dx * Math.cos(a) - dy * Math.sin(a);
+          y = py + dx * Math.sin(a) + dy * Math.cos(a);
+          break;
+        }
+        case 'earL':
+        case 'earR': {
+          // 垂耳：繞著根部擺，越靠近耳尖擺越多（耳朵在頭兩側，往外甩比往內甩容易）
+          const [px, py] = layer.pivot!;
+          const v = layer.name === 'earL' ? p.earL : p.earR;
+          const dx = x - px, dy = y - py;
+          const t = clamp(Math.hypot(dx, dy) / tune.earLen, 0, 1);
+          const a = v * 0.32 * t * (0.6 + 0.4 * t);
           x = px + dx * Math.cos(a) - dy * Math.sin(a);
           y = py + dx * Math.sin(a) + dy * Math.cos(a);
           break;
@@ -278,14 +305,17 @@ export class Model {
       let hx = x, hy = y;
       let wHead = conf.head ? 1 : 0;
       if (conf.fade) wHead *= 1 - smooth(conf.fade[0], conf.fade[1], rest[i * 2 + 1]);
-      if (layer.name === 'tail') wHead *= 1 - 0.55 * clamp((rest[i * 2 + 1] - 300) / 500, 0, 1);
+      if (layer.name === 'tail') {
+        const [a0, a1] = tune.tailHeadFade;
+        wHead *= 1 - 0.55 * clamp((rest[i * 2 + 1] - a0) / (a1 - a0), 0, 1);
+      }
       if (wHead > 0) {
         const u = (x - hcx) / R, v = (y - hcy) / R;
         const zc = Math.sqrt(Math.max(0, 1 - 0.75 * (u * u + v * v)));
         // 球面：中間（鼻子附近）移動最多，邊緣移動少 → 一邊被壓扁、一邊被拉開
         // 瀏海兩側其實在頭的側面（比較後面），深度往兩側遞減，才不會和馬尾、後髮拉開縫
         let depth = conf.depth;
-        if (layer.name === 'front_hair') depth = depth + (-0.2 - depth) * smooth(0.45, 0.95, Math.abs(u));
+        if (layer.name === 'front_hair') depth = depth + (tune.frontHairSideDepth - depth) * smooth(0.45, 0.95, Math.abs(u));
         let dx = ax * R * (0.075 * depth + 0.085 * zc);
         let dy = -ay * R * (0.055 * depth + 0.065 * zc);
         // 轉向的那一側稍微壓縮（透視）

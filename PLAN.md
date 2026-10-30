@@ -16,9 +16,11 @@
 | M3 | 讓她活起來：呼吸、隨機眨眼（偶爾連眨）、身體晃動、視線跟隨（眼睛比頭快）、彈簧物理（頭髮、側馬尾、呆毛、耳環） | 截圖 + 物理在戳完後會慢慢停下 |
 | M4 | 互動：戳頭害羞、戳臉頰鼓臉、太久不動打瞌睡、麥克風對嘴、右下角對話框（台詞在 `src/lines.json`） | 截圖：害羞、鼓臉、打瞌睡、張嘴 |
 | M5 | 打包成單一 HTML、README.md（繁中：換圖、改台詞、調參數）、最後一輪截圖檢查 | `dist/index.html` 雙擊可開 |
+| M6 | 第二輪優化：閉眼、呆毛、頭髮切割、背景 | 截圖 |
+| M7 | 第二個角色（`art/ref-maid.jpg`，藍色垂耳女僕）：切圖、綁定、程式改成多角色、兩個人的互動與台詞 | 截圖：兩個角色的各種姿勢、互動、聊天、手機寬度 |
 
 ## 架構
-- `tools/`：Python 切圖腳本（去背、分部位、補圖、畫閉眼和張嘴零件）→ `src/assets/parts/*.png` + `src/assets/rig.json`
+- `tools/`：Python 切圖腳本（去背、分部位、補圖、畫閉眼和張嘴零件）→ `src/chars/<角色>/parts/*.png` + `src/chars/<角色>/rig.json`
 - `src/gl.ts`：WebGL 渲染（每個部位一個三角網格、預乘 alpha、用 stencil 把瞳孔裁在眼白裡）
 - `src/mesh.ts`：依圖片 alpha 自動建三角網格
 - `src/model.ts`：參數表 + 變形器（像 Live2D 的 warp/rotation deformer）
