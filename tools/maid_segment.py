@@ -379,18 +379,13 @@ for s, e in EYES.items():
     ybot = max(p[1] for p in e['bot'])
     box = np.zeros_like(fg); box[by0 - 6:ybot + 6, bx0 - 10:bx1 + 10] = True
     old_lines = dil(dark & ~dil(oval[s] | lash_zone[s], 3), 1)
+    # the whole eye area of that drawing (skin + lid line), feathered at the edge
     for nm, i in (('closed', 10), ('smile', 7)):
-        l = np.array(Image.fromarray(EX[i]).convert('L')).astype(np.float32)
-        d = box & (l < 110) & ~old_lines
-        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(d.astype(np.uint8), connectivity=8)
-        big_ = st_[1:, 4].max()
-        d = np.isin(lab_, [k for k in range(1, n_) if st_[k, 4] >= max(20, 0.2 * big_)])
-        m = dil(d, 1) & (l < 230)
-        fl = fr.mean(-1)
-        a_ = np.clip((fl - l) / np.maximum(fl - 60, 1), 0, 1) * soft(m, 0.5)
-        a3 = np.maximum(a_, 1e-3)[..., None]
-        c_ = np.clip((EX[i].astype(np.float32) - (1 - a3) * fr) / a3, 0, 255).astype(np.uint8)
-        save_layer(eye_name(s, nm), c_, a_, 44, dict(eye=side(s)))
+        region = (dil(oval[s] | lash_zone[s], 6) & box & fg) & ~dil(brow_px[s], 2)
+        if nm == 'smile':   # the ^ ^ drawing has its blush marks in other places: stop above the cheeks
+            region &= (np.arange(H)[:, None] < e['oval'][1] + e['oval'][3] * 0.35)
+        a_ = np.clip(soft(ero(region, 2), 2.5) * 1.15, 0, 1)
+        save_layer(eye_name(s, nm), EX[i], a_, 44, dict(eye=side(s)))
     top = [cpt(p) for p in e['top']]
     botc = [cpt(p) for p in e['bot'][:-1]]
     if FLIP:

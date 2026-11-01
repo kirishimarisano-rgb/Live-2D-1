@@ -371,16 +371,14 @@ for s, e in EYES.items():
     ybot = max(p[1] for p in e['bot'])
     box = (xs_ > x0 - 34) & (xs_ < x1 + 26) & (ys_ > ytop - 22) & (ys_ < ybot + 10)
     old_lines = dil(dark01 & ~dil(op, 3) & ~dil(LASH[s], 2), 1)
+    # the whole eye area of that drawing (skin, crease and lashes), feathered at the edge:
+    # no guessing which dark pixels are the new line, and the skin around it is the drawn one
     for nm, i in (('closed', 10), ('smile', 7)):
         l = EX[i].astype(np.float32).mean(-1)
-        lift = 8 if nm == 'closed' else 14
-        d = box & (l < 150) & ~old_lines & (ys_ > top[None, :] - lift)
-        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(d.astype(np.uint8), connectivity=8)
-        big_ = st_[1:, 4].max()
-        d = np.isin(lab_, [k for k in range(1, n_) if st_[k, 4] >= max(20, 0.25 * big_)])
-        m = dil(d, 1) & (l < 215)
-        c, a = line_layer(EX[i], m)
-        save_layer(f'eye{s}_{nm}', c, a, 44, dict(eye=s))
+        line = box & (l < 150) & dil(EYEZONE[s], 12)
+        region = (dil(EYEZONE[s], 5) | dil(biggest(line, 20), 4)) & box & fg
+        a_ = np.clip(soft(ero(region, 2), 2.5) * 1.15, 0, 1)
+        save_layer(f'eye{s}_{nm}', EX[i], a_, 44, dict(eye=s))
     rig_eyes[s] = dict(top=[cpt(p) for p in e['top']], bot=[cpt(p) for p in e['bot']],
                        iris=cpt((cx, cy)) + [rx, ry], move=list(e['move']), rest=[0, 0])
 
