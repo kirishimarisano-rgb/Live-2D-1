@@ -16,6 +16,23 @@ async function main() {
   const bg = new Background(document.getElementById('bg') as HTMLCanvasElement);
   // ?hour=20 可以固定背景的時刻（0～24），不加就用現在的時間
   if (qs.has('hour')) bg.hour = parseFloat(qs.get('hour')!);
+  // 背景：圖片房間／程式畫的房間（記在這台瀏覽器，?bg=room 或 ?bg=photo 可指定）
+  const BG_KEY = 'kanban-bg';
+  try {
+    const saved = localStorage.getItem(BG_KEY);
+    if (saved === 'room' || saved === 'photo') bg.mode = saved;
+  } catch { /* 無痕模式之類，用預設 */ }
+  const qbg = qs.get('bg');
+  if (qbg === 'room' || qbg === 'photo') bg.mode = qbg;
+  const bgBtn = document.getElementById('bgbtn') as HTMLButtonElement;
+  const bgLabel = () => { bgBtn.textContent = bg.mode === 'photo' ? '🖼 背景：房間圖' : '🖼 背景：小窗戶'; };
+  bgLabel();
+  bgBtn.addEventListener('click', () => {
+    bg.mode = bg.mode === 'photo' ? 'room' : 'photo';
+    try { localStorage.setItem(BG_KEY, bg.mode); } catch { /* 存不了就算了 */ }
+    bgLabel();
+    bg.draw();
+  });
 
   const lines = loadLines();
   const settings = lines.settings;

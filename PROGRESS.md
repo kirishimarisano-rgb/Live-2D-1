@@ -65,3 +65,9 @@
 - `art/maid2/expression_01..12.png`（白底、對齊）；`tools/maid2_align.py` 用特徵點把它們對齊到舊圖 `ref-maid.jpg` 的座標，所以頭髮、頭飾、耳朵的多邊形都能沿用，只重量了眼睛、眉毛、嘴巴、臉紅
 - 閉眼取 `expression_10`、笑眼取 `expression_07`、張嘴取 `expression_11`，平常的小微笑嘴也有了（舊圖沒有嘴）
 - 截圖 `screenshots/m9-maid.png`
+
+## M10 圖片背景 ✅
+- Kri 生的房間三張（白天／黃昏／晚上）：原圖在 `art/bg/`，壓成 webp 放 `src/bg/`
+- `src/background.ts` 新增 `mode = 'photo'`：鋪滿畫面、跟滑鼠有一點視差；依時間交叉淡入（5–7 點夜→日、16–17:30 日→黃昏、18:30–19:30 黃昏→夜）；稍微模糊、降一點飽和並蓋一層淡霧，讓角色站出來
+- 右上角「🖼 背景」切換圖片房間／原本程式畫的小窗戶房間，選擇記在瀏覽器；網址 `?bg=room`、`?bg=photo`、`?hour=` 可指定
+- 截圖 `screenshots/m10-bg-*.png`
