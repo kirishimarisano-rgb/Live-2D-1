@@ -78,3 +78,10 @@
 - 台詞裡可以寫 `{name}`：換成「⚙ 設定」裡填的名字，沒填的話粉紅說「你」、女僕說「主人」
 - 「⚙ 設定」面板：名字、上傳自己的背景圖（縮到 2560 寬、存在瀏覽器的 IndexedDB）、刪掉自訂背景；「🖼 背景」按鈕在 房間圖／小窗戶／我的圖 之間切換
 - 截圖 `screenshots/m11-settings.png`；用 Playwright 測過：填名字、上傳圖、重新整理後名字和背景都還在
+
+## M12 AI 聊天 ✅
+- 畫面下方的聊天框：可以選跟粉紅、女僕或兩個人說話；「兩個人」時 AI 用「粉紅：」「女僕：」分行回答，照順序輪流出對話框
+- `src/ai.ts`：預設 Ollama、LM Studio、OpenAI、OpenRouter、Claude、其他 OpenAI 相容；OpenAI 相容走 `/chat/completions`，Claude 走 `/messages`（瀏覽器直連標頭）
+- 角色個性（`PERSONA`）＋規則：繁體中文、一兩句、句首帶心情 `[開心][害羞][生氣][想睡]`，角色會照心情做表情；會拿掉本地模型的 `<think>` 思考內容
+- 設定存在 `localStorage` 的 `kanban-ai`；「測試連線」失敗時會提示本機模型要開 CORS（`OLLAMA_ORIGINS=*`、LM Studio 的 Enable CORS）
+- 用 Playwright 攔截假的 AI 網址測過：單人、雙人、伺服器錯誤三種情況，桌機和手機寬度；截圖 `screenshots/m12-chat-*.png`

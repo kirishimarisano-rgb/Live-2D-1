@@ -6,6 +6,7 @@ import { LipSync } from './lipsync';
 import { getUserName, loadLines, setUserName } from './bubble';
 import { DebugPanel } from './debug';
 import { Background } from './background';
+import { chat, DUO_RULES, loadAi, parseDuo, parseLine, PERSONA, PRESETS, RULES, saveAi, type Mood, type Msg } from './ai';
 import { blobImage, loadBlob, loadText, saveBlob, saveText } from './store';
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -76,7 +77,7 @@ async function main() {
     a.motion.glance(gx, gy, seconds);
   };
   // 正在進行的對話：[誰, 台詞] 一句一句講
-  let duo: [string, string][] = [];
+  let duo: [string, string, Mood?][] = [];
   let duoNext = 0;
   const startDuo = (i: number) => {
     duo = lines.duo[i % lines.duo.length].map(([w, s]) => [w, s] as [string, string]);
@@ -187,6 +188,116 @@ async function main() {
     if (bg.mode === 'custom') setBg('photo');
   });
 
+  // ---- AI 聊天 ----
+  const showMood = (c: Character, mood: Mood) => {
+    if (mood === 'shy') { c.motion.react('shy'); c.physics.kick(3); }
+    else if (mood === 'angry') c.motion.react('puff');
+    else if (mood === 'happy') { c.motion.react('body'); c.physics.kick(2); }
+  };
+  let history: Msg[] = [];
+  let pending: AbortController | null = null;
+  const chatForm = document.getElementById('chat') as HTMLFormElement;
+  const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+  const chatWho = document.getElementById('chat-who') as HTMLSelectElement;
+  const callName = (id: string) => getUserName() || byId(id).def.callYou || '你';
+  chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    const cfg = loadAi();
+    if (!cfg || !cfg.model) {
+      byId('pink').bubble.show('要先到「⚙ 設定」接上 AI，我才能跟你聊天喔～');
+      panel.classList.add('open');
+      return;
+    }
+    chatInput.value = '';
+    pending?.abort();
+    pending = new AbortController();
+    duo = [];
+    for (const c of chars) c.motion.input();
+    const who = chatWho.value;
+    const both = who === 'both';
+    const speaker = both ? byId('pink') : byId(who);
+    for (const c of chars) if (c !== speaker) c.bubble.hide();
+    speaker.bubble.show('……');
+    if (both) lookAtOther(byId('maid'), byId('pink'), 2);
+    const system = both
+      ? `${PERSONA.pink.replace('{name}', callName('pink'))}\n${PERSONA.maid.replace('{name}', callName('maid'))}\n${DUO_RULES}`
+      : `${PERSONA[who].replace('{name}', callName(who))}\n${RULES}`;
+    history.push({ role: 'user', content: both ? text : text });
+    history = history.slice(-12);
+    try {
+      const reply = await chat(cfg, system, history, pending.signal);
+      history.push({ role: 'assistant', content: reply });
+      if (both) {
+        const lines_ = parseDuo(reply);
+        speaker.bubble.hide();
+        duo = lines_;
+        duoNext = t;
+      } else {
+        const { text: say, mood } = parseLine(reply);
+        speaker.bubble.show(say || '……');
+        if (mood) showMood(speaker, mood);
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      history.pop();
+      console.warn('AI 連線失敗', err);
+      speaker.bubble.show('嗚……連不上 AI 耶，去設定看看？');
+      aiNote.textContent = `連線失敗：${String((err as Error).message ?? err).slice(0, 120)}`;
+    }
+  });
+
+  // 設定面板裡的 AI 區塊
+  const aiPreset = document.getElementById('ai-preset') as HTMLSelectElement;
+  const aiUrl = document.getElementById('ai-url') as HTMLInputElement;
+  const aiModel = document.getElementById('ai-model') as HTMLInputElement;
+  const aiKey = document.getElementById('ai-key') as HTMLInputElement;
+  const aiNote = document.getElementById('ai-note')!;
+  for (const [k, p] of Object.entries(PRESETS)) aiPreset.add(new Option(p.label, k));
+  const fillAi = (preset: string, keepKey = false) => {
+    const p = PRESETS[preset];
+    aiUrl.value = p.baseUrl;
+    aiModel.value = p.model;
+    if (!keepKey) aiKey.value = '';
+  };
+  const savedAi = loadAi();
+  if (savedAi) {
+    aiPreset.value = savedAi.preset;
+    aiUrl.value = savedAi.baseUrl;
+    aiModel.value = savedAi.model;
+    aiKey.value = savedAi.apiKey;
+  } else fillAi('ollama');
+  aiPreset.addEventListener('change', () => fillAi(aiPreset.value));
+  const readAi = () => ({
+    preset: aiPreset.value,
+    provider: PRESETS[aiPreset.value].provider,
+    baseUrl: aiUrl.value.trim(),
+    model: aiModel.value.trim(),
+    apiKey: aiKey.value.trim(),
+  });
+  document.getElementById('ai-save')!.addEventListener('click', () => {
+    saveAi(readAi());
+    history = [];
+    aiNote.textContent = '存好了！在下面的聊天框打字就可以聊天。';
+  });
+  document.getElementById('ai-test')!.addEventListener('click', async () => {
+    aiNote.textContent = '測試中……';
+    try {
+      const r = await chat(readAi(), '用繁體中文回一句很短的打招呼。', [{ role: 'user', content: '嗨' }]);
+      aiNote.textContent = `連上了：${parseLine(r).text.slice(0, 40)}`;
+    } catch (err) {
+      const local = aiPreset.value === 'ollama' || aiPreset.value === 'lmstudio';
+      aiNote.textContent = `連不上：${String((err as Error).message ?? err).slice(0, 100)}` +
+        (local ? '（本機模型要開啟跨網域：Ollama 啟動前設定 OLLAMA_ORIGINS=*；LM Studio 在伺服器設定打開 CORS）' : '');
+    }
+  });
+  document.getElementById('ai-clear')!.addEventListener('click', () => {
+    saveAi(null);
+    fillAi(aiPreset.value);
+    aiNote.textContent = 'AI 設定（含金鑰）已從這個瀏覽器刪除。';
+  });
+
   const debug = debugMode
     ? new DebugPanel(
         chars.map((c) => ({ id: c.id, name: c.def.name })),
@@ -259,10 +370,11 @@ async function main() {
 
     // 對話：上一句講完就換下一個人
     if (duo.length && t > duoNext) {
-      const [who, text] = duo.shift()!;
+      const [who, text, mood] = duo.shift()!;
       const c = byId(who);
       if (c && !c.motion.sleeping) {
         c.bubble.show(text);
+        if (mood) showMood(c, mood);
         for (const o of others(c)) {
           lookAtOther(o, c, 2.2);
           lookAtOther(c, o, 1.6);
