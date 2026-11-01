@@ -18,6 +18,8 @@
 - 網址後面加 `?debug=1`（例如 `dist/index.html?debug=1`）：顯示網格線和所有參數滑桿
 - 背景的窗外會跟著你電腦現在的時間變成白天、黃昏或晚上；想固定的話加 `?hour=20`（0～24，可以和 debug 一起用：`?debug=1&hour=18`）
 
+- 下面的聊天框：在「⚙ 設定」接上 AI 之後，可以打字跟粉紅、女僕或兩個人一起聊天（見下面「接上 AI 聊天」）
+
 **跑完先玩什麼**：打開後別動滑鼠，等她打瞌睡，再戳她一下喵。
 
 ## 開發
@@ -134,6 +136,22 @@ node tools/zoom.mjs out.png 140,380,440,560 '[{},{"eyeLOpen":0}]' maid   # 近�
    - 程式最後 `rig = dict(...)` 裡的 `headCenter`、`headRadius`、`neck`
 3. `npm run parts`，看 `build/debug/` 裡的圖檢查切得對不對（`polygons.png` 是多邊形疊在原圖上，`L_*.png` 是各部位單獨的樣子），再 `npm run build`。
 
+## 接上 AI 聊天
+
+打開「⚙ 設定」→「AI 聊天」，選一個 AI、按「測試連線」，成功就按「儲存」。之後在畫面下方的聊天框打字，左邊可以選跟粉紅、女僕還是兩個人說話。AI 回話時會順便帶心情，她們會跟著害羞、鼓臉或開心地晃一下。
+
+| 選項 | 要填的 | 說明 |
+|---|---|---|
+| Ollama（本機） | 模型名稱，例如 `qwen2.5:7b` | 免費、不用網路。先 `ollama pull qwen2.5:7b`。**要允許網頁連線**：關掉 Ollama，用 `OLLAMA_ORIGINS=* ollama serve` 重開（Windows：系統環境變數加 `OLLAMA_ORIGINS` = `*`，再重開 Ollama） |
+| LM Studio（本機） | 模型名稱（載入的那個） | 在 Developer／Local Server 頁面開伺服器，並打開 **Enable CORS** |
+| OpenAI／OpenRouter／Claude | API 金鑰 | 要付費或額度。金鑰只存在這個瀏覽器，只會直接送到你選的 AI |
+| 其他（OpenAI 相容） | 網址、模型 | llama.cpp server、vLLM、Jan 等只要有 `/v1/chat/completions` 都能用 |
+
+- 中文聊天建議至少 7B 的模型（qwen2.5 系列中文很好）；太小的模型可能不照格式回答，不過還是會顯示
+- 聊天紀錄只保留最近 12 句、不會存檔；重新整理就忘了
+- 給朋友的檔案裡不會有你的設定和金鑰（都存在你自己的瀏覽器）；不要在別人的電腦上存金鑰
+- 角色個性寫在 `src/ai.ts` 的 `PERSONA`，想改說話方式改那裡
+
 ## 檔案結構
 
 ```
@@ -142,6 +160,7 @@ tools/              切圖腳本（Python）、截圖腳本（Playwright）
 src/chars/pink/     主角：切好的部位圖、rig.json、設定 index.ts
 src/chars/maid/     女僕：同上
 src/character.ts    一個角色（畫布、網格、物理、動作、對話框）
+src/ai.ts           AI 聊天：各家 AI 的連線設定、角色個性、解析回話
 src/main.ts         放兩個角色、滑鼠、麥克風、兩個人之間的互動
 src/                渲染器、變形器、物理、動作、對嘴、對話框、背景、debug 面板
 screenshots/        各里程碑的檢查截圖
