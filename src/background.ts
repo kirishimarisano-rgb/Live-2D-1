@@ -34,7 +34,7 @@ function skyAt(hour: number) {
   return { top: SKY[0][1], bot: SKY[0][2], stars: 1 };
 }
 
-// 圖片背景（Kri 生的房間，白天／黃昏／晚上三張，依時間交叉淡入）
+// 圖片背景（生圖模型畫的房間，白天／黃昏／晚上三張，依時間交叉淡入）
 import roomDay from './bg/room_day.webp?inline';
 import roomSunset from './bg/room_sunset.webp?inline';
 import roomNight from './bg/room_night.webp?inline';
