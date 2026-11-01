@@ -1,5 +1,5 @@
 // 近拍某個區域的多個姿勢，排成一張圖：node tools/zoom.mjs out.png x0,y0,x1,y1 '[{...},{...}]' [pink|maid]
-// 座標是那個角色的畫布座標（pink 900×1036、maid 736×778）
+// 座標是那個角色的畫布座標（pink 890×1244、maid 736×778）
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';

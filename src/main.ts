@@ -29,6 +29,7 @@ async function main() {
     const c = new Character(def, stage, bubbleEl, charLines, settings.showSeconds);
     c.motion.sleepAfter = settings.sleepAfterSeconds;
     // 畫布超出畫面的部分（切到的邊緣往外補的那一圈）
+    stage.style.aspectRatio = `${def.rig.canvas.w} / ${def.rig.canvas.h}`;
     const bleed = def.rig.canvas.bleed;
     if (bleed) {
       stage.style.setProperty('--bleed-left', String(bleed.left / def.rig.canvas.h));

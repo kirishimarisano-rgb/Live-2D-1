@@ -33,7 +33,7 @@ npm run build    # 打包成 dist/index.html
 重新切圖需要 Python 3 和 `pip install pillow numpy opencv-python-headless`：
 
 ```bash
-npm run parts    # 兩個角色都重切：tools/cutout.py + segment.py（主角）、maid_cutout.py + maid_segment.py（女僕）
+npm run parts    # 兩個角色都重切：tools/pink2_segment.py（主角）、maid_cutout.py + maid_segment.py（女僕）
 python3 tools/rig_sheet.py pink   # 重新產生 RIG.md 用的圖（maid 也可以）
 python3 tools/compose.py maid out.png front_hair   # 把部位疊回去看看（第三個參數是要藏起來的部位）
 ```
@@ -137,7 +137,7 @@ node tools/zoom.mjs out.png 140,380,440,560 '[{},{"eyeLOpen":0}]' maid   # 近�
 ## 檔案結構
 
 ```
-art/                原始圖（主角 ref-main-flag.png、另外兩張是參考；女僕 ref-maid.jpg）
+art/                原始圖（主角 pink2/expression_01..12.png，舊版 ref-main-flag.png；女僕 ref-maid.jpg、新的表情組 maid2/）
 tools/              切圖腳本（Python）、截圖腳本（Playwright）
 src/chars/pink/     主角：切好的部位圖、rig.json、設定 index.ts
 src/chars/maid/     女僕：同上

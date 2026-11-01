@@ -53,3 +53,11 @@
 - **兩個人的互動**：戳一個，另一個會轉頭看、有時吐槽（`otherPoked`）；隨機時間會開始一段對話（`duo`），講話的人和聽的人會看向對方；女僕比較愛睏、動作慢半拍
 - **台詞**：`src/lines.json` 改成 `pink`／`maid`／`duo` 三段
 - 截圖 `screenshots/m7-pink-*.png`、`m7-maid-*.png`、`m7-live-*.png`（含 `live-chat`、`live-maid-shy`），`rig-maid-parts.png`、`rig-maid-pivots.png`；用真的滑鼠點擊測過：點女僕的頭→害羞、點主角畫布透明的地方→沒反應、點主角臉頰→鼓臉
+
+## M8 主角換成生圖模型的表情組 ✅
+- **素材**：Kri 用提示詞生的 `art/pink2/expression_01..12.png`（綠背景、手放下、12 種表情彼此對齊）
+- **切圖**（`tools/pink2_segment.py`）：23 個部位。眼白／瞳孔／睫毛／下眼線分開；閉眼、笑眼、張嘴、臉紅都直接取自對應的表情圖，所以閉眼和張嘴的線條和原畫一致
+- **頭髮**：皮膚和頭髮顏色太接近，先用輪廓線圍出的區塊＋色相分；脖子旁邊頭髮的切口淡出，身體層往上延伸墊在頭髮下面，轉頭時不會裂開
+- 畫布長寬比改由 `rig.json` 決定（`index.html` 不再寫死）；`model.ts` 支援 `eye?_lower`
+- 截圖 `screenshots/m8-*.png`
+- 女僕的表情組 `art/maid2/` 已收到，下一步用同樣方法重做女僕

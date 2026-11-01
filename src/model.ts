@@ -349,7 +349,7 @@ export class Model {
       const open = side === 'L' ? p.eyeLOpen : p.eyeROpen;
       const shut = 1 - smooth(0.07, 0.2, open); // 0 = 睜開、1 = 閉上
       const part = name.slice(5);
-      if (part === 'white' || part === 'iris') return smooth(0.02, 0.12, open);
+      if (part === 'white' || part === 'iris' || part === 'lower') return smooth(0.02, 0.12, open);
       if (part === 'lash') return 1 - shut;
       if (part === 'closed') return shut * (1 - p.eyeSmile);
       if (part === 'smile') return shut * p.eyeSmile;
