@@ -159,6 +159,7 @@ async function main() {
   fileInput.addEventListener('change', async () => {
     const f = fileInput.files?.[0];
     if (!f) return;
+    document.getElementById('bg-file-name')!.textContent = f.name;
     // 太大的圖縮到 2560 寬再存，省空間
     const img = await blobImage(f).catch(() => null);
     if (!img) { note.textContent = '這個檔案打不開，換一張圖試試看。'; return; }
