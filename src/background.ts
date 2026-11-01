@@ -34,7 +34,35 @@ function skyAt(hour: number) {
   return { top: SKY[0][1], bot: SKY[0][2], stars: 1 };
 }
 
+// 圖片背景（Kri 生的房間，白天／黃昏／晚上三張，依時間交叉淡入）
+import roomDay from './bg/room_day.webp?inline';
+import roomSunset from './bg/room_sunset.webp?inline';
+import roomNight from './bg/room_night.webp?inline';
+
+export type BgMode = 'photo' | 'room' | 'custom';
+
+/** 這個時刻三張圖各佔多少（白天、黃昏、晚上） */
+function photoWeights(h: number): [number, number, number] {
+  const ramp = (a: number, b: number) => Math.min(1, Math.max(0, (h - a) / (b - a)));
+  if (h < 5) return [0, 0, 1];
+  if (h < 7) { const k = ramp(5, 7); return [k, 0, 1 - k]; }
+  if (h < 16) return [1, 0, 0];
+  if (h < 17.5) { const k = ramp(16, 17.5); return [1 - k, k, 0]; }
+  if (h < 18.5) return [0, 1, 0];
+  if (h < 19.5) { const k = ramp(18.5, 19.5); return [0, 1 - k, k]; }
+  return [0, 0, 1];
+}
+
 export class Background {
+  /** 'photo' = 圖片房間、'room' = 原本程式畫的房間、'custom' = 自己上傳的圖 */
+  mode: BgMode = 'photo';
+  /** 使用者上傳的背景圖 */
+  custom: HTMLImageElement | null = null;
+  private photos: HTMLImageElement[] = [roomDay, roomSunset, roomNight].map((src) => {
+    const im = new Image();
+    im.src = src;
+    return im;
+  });
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
@@ -162,10 +190,43 @@ export class Background {
     }
   }
 
+  /** 圖片背景：鋪滿畫面、稍微跟著滑鼠移動；模糊一點、降一點飽和，讓角色站出來 */
+  private drawPhoto(hour: number) {
+    const g = this.ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const W = this.canvas.width, H = this.canvas.height;
+    g.fillStyle = '#e9dcef';
+    g.fillRect(0, 0, W, H);
+    const custom = this.mode === 'custom' && this.custom;
+    const photos = custom ? [this.custom!] : this.photos;
+    const wts: number[] = custom ? [1] : photoWeights(hour);
+    const zoom = 1.05;
+    g.filter = `blur(${(1.2 * this.dpr).toFixed(1)}px) saturate(0.9) contrast(0.94)`;
+    photos.forEach((im, i) => {
+      if (wts[i] <= 0.001 || !im.complete || !im.naturalWidth) return;
+      const s = Math.max(W / im.naturalWidth, H / im.naturalHeight) * zoom;
+      const dw = im.naturalWidth * s, dh = im.naturalHeight * s;
+      const x = (W - dw) / 2 - this.px * (dw - W) * 0.4;
+      const y = (H - dh) / 2 - this.py * (dh - H) * 0.4;
+      g.globalAlpha = i === 0 ? 1 : wts[i] / Math.max(1e-3, wts.slice(0, i + 1).reduce((a, b) => a + b, 0));
+      if (wts.slice(0, i).every((w) => w <= 0.001)) g.globalAlpha = 1;
+      g.drawImage(im, x, y, dw, dh);
+    });
+    g.filter = 'none';
+    g.globalAlpha = 1;
+    // 一層很淡的霧，背景往後退
+    g.fillStyle = 'rgba(255, 246, 250, 0.10)';
+    g.fillRect(0, 0, W, H);
+  }
+
   draw() {
     const g = this.ctx;
     const now = new Date();
     const hour = this.hour ?? now.getHours() + now.getMinutes() / 60;
+    if (this.mode === 'photo' || (this.mode === 'custom' && this.custom)) {
+      this.drawPhoto(hour);
+      return;
+    }
     if (!this.wall) this.buildWall();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.drawImage(this.wall!, 0, 0);

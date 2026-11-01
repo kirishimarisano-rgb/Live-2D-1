@@ -1,14 +1,14 @@
 """Step 2: cut build/cutout.png into rig parts.
 
 Every coordinate below is in the pixel space of art/ref-main-flag.png.
-Outputs src/assets/parts/*.png (each trimmed to its bbox) and src/assets/rig.json.
+Outputs src/chars/pink/parts/*.png (each trimmed to its bbox) and src/chars/pink/rig.json.
 Run:  python3 tools/cutout.py && python3 tools/segment.py
 """
 import json, os, math
 import numpy as np, cv2
 from PIL import Image, ImageDraw, ImageFilter
 
-OUT = 'src/assets/parts'
+OUT = 'src/chars/pink/parts'
 os.makedirs(OUT, exist_ok=True)
 os.makedirs('build/debug', exist_ok=True)
 
@@ -449,7 +449,7 @@ rig = dict(
     eyes=rig_eyes,
     layers=sorted(layers, key=lambda l: l['z']),
 )
-json.dump(rig, open('src/assets/rig.json', 'w'), indent=1)
+json.dump(rig, open('src/chars/pink/rig.json', 'w'), indent=1)
 
 # debug overlay ----------------------------------------------------------
 dbg = Image.fromarray(np.dstack([rgb0, (fg * 255).astype(np.uint8)])).convert('RGBA')

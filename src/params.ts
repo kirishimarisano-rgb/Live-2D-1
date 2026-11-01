@@ -32,6 +32,8 @@ export const PARAMS: ParamDef[] = [
   { id: 'ahoge', name: '呆毛 擺動', min: -1, max: 1, def: 0 },
   { id: 'ahoge2', name: '呆毛 末端', min: -1, max: 1, def: 0 },
   { id: 'earring', name: '耳環 擺動', min: -1, max: 1, def: 0 },
+  { id: 'earL', name: '垂耳 左', min: -1, max: 1, def: 0 },
+  { id: 'earR', name: '垂耳 右', min: -1, max: 1, def: 0 },
 ];
 
 export type Params = Record<string, number>;

@@ -11,6 +11,32 @@ const ease = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 export type Reaction = 'shy' | 'puff' | 'body' | 'wake';
 
+/** 個性：每個角色動作的快慢不一樣 */
+export interface Persona {
+  /** 頭追視線的速度（秒，越小越快） */
+  headTau: number;
+  eyeTau: number;
+  /** 眨眼間隔 [最短, 最長]（秒） */
+  blink: [number, number];
+  doubleBlink: number;
+  /** 打瞌睡的時間 × 這個倍數（<1 比較容易睡著） */
+  sleepFactor: number;
+  /** 視線最大角度 [左右, 上下] */
+  angle: [number, number];
+  /** 身體晃動的幅度倍數 */
+  sway: number;
+}
+
+export const DEFAULT_PERSONA: Persona = {
+  headTau: 0.38,
+  eyeTau: 0.07,
+  blink: [1.8, 5.5],
+  doubleBlink: 0.18,
+  sleepFactor: 1,
+  angle: [24, 18],
+  sway: 1,
+};
+
 export class Motion {
   t = 0;
   // 視線（-1..1）
@@ -25,7 +51,7 @@ export class Motion {
   private idleLookAt = 0;
   private idleTarget: [number, number] = [0, 0];
   // 眨眼
-  private nextBlink = rand(2.2, 4);
+  private nextBlink: number;
   private blinkT = -1;
   private doubleBlink = false;
   // 反應
@@ -40,6 +66,21 @@ export class Motion {
   talk = 0;
   mic = -1; // <0 = 沒開
   private talkPhase = 0;
+  // 暫時看別的地方（例如看另一個角色），到 glanceUntil 為止
+  private glanceTarget: [number, number] = [0, 0];
+  private glanceUntil = -1;
+  persona: Persona;
+
+  constructor(persona: Partial<Persona> = {}) {
+    this.persona = { ...DEFAULT_PERSONA, ...persona };
+    this.nextBlink = rand(2.2, 4) * (this.persona.blink[0] / DEFAULT_PERSONA.blink[0]);
+  }
+
+  /** 看向某個方向一段時間（-1..1，和 look 一樣的座標） */
+  glance(x: number, y: number, seconds: number) {
+    this.glanceTarget = [clamp(x, -1, 1), clamp(y, -1, 1)];
+    this.glanceUntil = this.t + seconds;
+  }
 
   /** 滑鼠位置（相對於頭部中心，大約 -1..1） */
   look(x: number, y: number) {
@@ -76,7 +117,8 @@ export class Motion {
     const p = defaultParams();
 
     // ---- 打瞌睡 ----
-    if (!this.sleeping && this.idleTime > this.sleepAfter && !this.reaction) this.sleeping = true;
+    const ps = this.persona;
+    if (!this.sleeping && this.idleTime > this.sleepAfter * ps.sleepFactor && !this.reaction) this.sleeping = true;
     this.sleep = follow(this.sleep, this.sleeping ? 1 : 0, this.sleeping ? 2.2 : 0.25, dt);
     const sl = this.sleep;
 
@@ -84,8 +126,8 @@ export class Motion {
     const breathPeriod = lerp(3.6, 5.4, sl);
     this.talkPhase += dt;
     p.breath = 0.5 + 0.5 * Math.sin((t / breathPeriod) * Math.PI * 2);
-    p.bodyX = 1.6 * Math.sin(t * 0.53) + 0.6 * Math.sin(t * 1.31 + 1);
-    p.bodyZ = 2.2 * Math.sin(t * 0.37 + 0.6) + 0.5 * Math.sin(t * 1.1);
+    p.bodyX = ps.sway * (1.6 * Math.sin(t * 0.53) + 0.6 * Math.sin(t * 1.31 + 1));
+    p.bodyZ = ps.sway * (2.2 * Math.sin(t * 0.37 + 0.6) + 0.5 * Math.sin(t * 1.1));
 
     // ---- 視線 ----
     // 滑鼠停太久就自己東張西望
@@ -97,15 +139,16 @@ export class Motion {
       }
       [tx, ty] = this.idleTarget;
     }
+    if (t < this.glanceUntil) [tx, ty] = this.glanceTarget;
     // 眼睛快、頭慢
-    this.eyeX = follow(this.eyeX, tx, 0.07, dt);
-    this.eyeY = follow(this.eyeY, ty, 0.07, dt);
-    this.headX = follow(this.headX, tx, 0.38, dt);
-    this.headY = follow(this.headY, ty, 0.45, dt);
+    this.eyeX = follow(this.eyeX, tx, ps.eyeTau, dt);
+    this.eyeY = follow(this.eyeY, ty, ps.eyeTau, dt);
+    this.headX = follow(this.headX, tx, ps.headTau, dt);
+    this.headY = follow(this.headY, ty, ps.headTau * 1.2, dt);
     p.eyeBallX = this.eyeX;
     p.eyeBallY = this.eyeY;
-    p.angleX = this.headX * 24;
-    p.angleY = this.headY * 18;
+    p.angleX = this.headX * ps.angle[0];
+    p.angleY = this.headY * ps.angle[1];
     p.angleZ = -this.headX * 4 + 2 * Math.sin(t * 0.45);
     p.bodyX += this.headX * 4;
 
@@ -113,7 +156,7 @@ export class Motion {
     let blink = 1;
     if (this.blinkT < 0 && t > this.nextBlink) {
       this.blinkT = 0;
-      this.doubleBlink = Math.random() < 0.18;
+      this.doubleBlink = Math.random() < ps.doubleBlink;
     }
     if (this.blinkT >= 0) {
       this.blinkT += dt;
@@ -128,7 +171,7 @@ export class Motion {
       blink = Math.min(one(this.blinkT), this.doubleBlink ? one(this.blinkT - 0.26) : 1);
       if (this.blinkT > (this.doubleBlink ? 0.5 : 0.24)) {
         this.blinkT = -1;
-        this.nextBlink = t + rand(1.8, 5.5);
+        this.nextBlink = t + rand(ps.blink[0], ps.blink[1]);
       }
     }
     let eyeOpen = blink;
@@ -145,7 +188,7 @@ export class Motion {
       p.eyeBallY = lerp(p.eyeBallY, -0.4, sl);
       p.eyeBallX = lerp(p.eyeBallX, 0, sl);
       p.bodyZ = lerp(p.bodyZ, 3, sl);
-      p.mouthOpen = lerp(p.mouthOpen, 0.12 + 0.06 * Math.sin((t / breathPeriod) * Math.PI * 2), sl);
+      p.mouthOpen = lerp(p.mouthOpen, 0.04 + 0.03 * Math.sin((t / breathPeriod) * Math.PI * 2), sl); // 睡著時嘴巴閉著（不要在張嘴／閉嘴之間閃）
       p.browY = lerp(p.browY, -0.3, sl);
     }
     p.eyeLOpen = eyeOpen;

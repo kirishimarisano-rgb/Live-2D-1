@@ -1,31 +1,15 @@
-import rigJson from './assets/rig.json';
-import { Renderer, type DrawItem } from './gl';
-import { buildMesh } from './mesh';
-import { Model, PART_CONF, type Rig, type RigLayer } from './model';
-import { clampParams, defaultParams, PARAMS, type Params } from './params';
-import { HairPhysics } from './physics';
-import { Motion } from './motion';
+import { Character, type CharDef } from './character';
+import { pink } from './chars/pink';
+import { maid } from './chars/maid';
+import { PARAMS, type Params } from './params';
 import { LipSync } from './lipsync';
-import { Bubble, loadLines } from './bubble';
+import { getUserName, loadLines, setUserName } from './bubble';
 import { DebugPanel } from './debug';
 import { Background } from './background';
+import { blobImage, loadBlob, loadText, saveBlob, saveText } from './store';
 
-const rig = rigJson as unknown as Rig;
-const images = import.meta.glob('./assets/parts/*.png', { eager: true, query: '?inline', import: 'default' }) as Record<string, string>;
-
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((ok, fail) => {
-    const img = new Image();
-    img.onload = () => ok(img);
-    img.onerror = fail;
-    img.src = src;
-  });
-}
-
-interface Part {
-  layer: RigLayer;
-  item: DrawItem;
-}
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
 
 async function main() {
   const qs = new URLSearchParams(location.search);
@@ -33,162 +17,285 @@ async function main() {
   const bg = new Background(document.getElementById('bg') as HTMLCanvasElement);
   // ?hour=20 可以固定背景的時刻（0～24），不加就用現在的時間
   if (qs.has('hour')) bg.hour = parseFloat(qs.get('hour')!);
-  const canvas = document.getElementById('gl') as HTMLCanvasElement;
-  const renderer = new Renderer(canvas, rig.canvas.w, rig.canvas.h);
-  const model = new Model(rig);
+  // 背景：圖片房間／程式畫的房間／自己上傳的圖（記在這台瀏覽器，?bg=room / photo / custom 可指定）
+  const BG_KEY = 'kanban-bg';
+  const saved = loadText(BG_KEY);
+  if (saved === 'room' || saved === 'photo' || saved === 'custom') bg.mode = saved;
+  const qbg = qs.get('bg');
+  if (qbg === 'room' || qbg === 'photo' || qbg === 'custom') bg.mode = qbg;
+  const customBlob = await loadBlob('background');
+  if (customBlob) bg.custom = await blobImage(customBlob).catch(() => null);
+  if (bg.mode === 'custom' && !bg.custom) bg.mode = 'photo';
+  const bgBtn = document.getElementById('bgbtn') as HTMLButtonElement;
+  const BG_NAMES = { photo: '房間圖', room: '小窗戶', custom: '我的圖' } as const;
+  const bgLabel = () => { bgBtn.textContent = `🖼 背景：${BG_NAMES[bg.mode]}`; };
+  const setBg = (m: typeof bg.mode) => {
+    bg.mode = m;
+    saveText(BG_KEY, m);
+    bgLabel();
+    bg.draw();
+  };
+  bgLabel();
+  bgBtn.addEventListener('click', () => {
+    const order: (typeof bg.mode)[] = bg.custom ? ['photo', 'room', 'custom'] : ['photo', 'room'];
+    setBg(order[(order.indexOf(bg.mode) + 1) % order.length]);
+  });
 
-  const parts: Part[] = [];
-  for (const layer of rig.layers) {
-    const src = images[`./assets/parts/${layer.file}`];
-    if (!src) throw new Error(`找不到部位圖 ${layer.file}`);
-    const img = await loadImage(src);
-    const conf = PART_CONF[layer.name];
-    const mesh = buildMesh(img, layer.x, layer.y, conf?.cell ?? 16);
-    // 眼白寫入 stencil，瞳孔只畫在眼白裡面
-    const stencil = layer.name.endsWith('_white') ? (layer.eye === 'L' ? 1 : 2)
-      : layer.name.endsWith('_iris') ? (layer.eye === 'L' ? -1 : -2) : 0;
-    parts.push({ layer, item: renderer.item(mesh, renderer.texture(img), stencil) });
-  }
-  const items = parts.map((p) => p.item);
+  // 名字：台詞裡的 {name}
+  setUserName(loadText('kanban-name') ?? '');
 
   const lines = loadLines();
-  const motion = new Motion();
-  motion.sleepAfter = lines.settings.sleepAfterSeconds;
-  const physics = new HairPhysics();
-  const lip = new LipSync();
-  const bubble = new Bubble(document.getElementById('bubble')!, lines, lines.settings.showSeconds);
-  let nextIdleLine = 3;
+  const settings = lines.settings;
+  // 後面的畫在上面：女僕在左下角、主角在右下角
+  const defs: CharDef[] = [maid, pink];
+  const chars: Character[] = [];
+  for (const def of defs) {
+    const stage = document.getElementById(`stage-${def.id}`)!;
+    const bubbleEl = document.getElementById(`bubble-${def.id}`)!;
+    const charLines = (lines as unknown as Record<string, Record<string, string[]>>)[def.id] ?? {};
+    const c = new Character(def, stage, bubbleEl, charLines, settings.showSeconds);
+    c.motion.sleepAfter = settings.sleepAfterSeconds;
+    // 畫布超出畫面的部分（切到的邊緣往外補的那一圈）
+    stage.style.aspectRatio = `${def.rig.canvas.w} / ${def.rig.canvas.h}`;
+    const bleed = def.rig.canvas.bleed;
+    if (bleed) {
+      stage.style.setProperty('--bleed-left', String(bleed.left / def.rig.canvas.h));
+      stage.style.setProperty('--bleed-bottom', String(bleed.bottom / def.rig.canvas.h));
+    }
+    await c.load();
+    chars.push(c);
+  }
+  const byId = (id: string) => chars.find((c) => c.id === id)!;
+  const others = (c: Character) => chars.filter((o) => o !== c);
 
-  const poke = (where: string) => {
-    const woke = motion.input();
-    if (woke) {
-      bubble.say('wake');
-      physics.kick(3);
-      return;
+  // ---- 兩個人之間 ----
+  /** 讓 a 轉頭看 b 一下 */
+  const lookAtOther = (a: Character, b: Character, seconds: number) => {
+    const [x, y] = b.headScreen();
+    const [gx, gy] = a.gazeTo(x, y);
+    a.motion.glance(gx, gy, seconds);
+  };
+  // 正在進行的對話：[誰, 台詞] 一句一句講
+  let duo: [string, string][] = [];
+  let duoNext = 0;
+  const startDuo = (i: number) => {
+    duo = lines.duo[i % lines.duo.length].map(([w, s]) => [w, s] as [string, string]);
+    duoNext = t;
+    chars.forEach((c) => c.bubble.hide());
+  };
+  let t = 0;
+  // 用動畫時間排程（截圖時 advance 快轉也會照順序發生）
+  const timers: { at: number; fn: () => void }[] = [];
+  const later = (seconds: number, fn: () => void) => timers.push({ at: t + seconds, fn });
+
+  // 短時間內戳太多次會抗議
+  const pokeTimes = new Map<string, number[]>();
+  const poke = (c: Character, where: 'head' | 'cheek' | 'body') => {
+    duo = [];
+    const r = c.poke(where);
+    const times = (pokeTimes.get(c.id) ?? []).filter((x) => t - x < 6);
+    times.push(t);
+    pokeTimes.set(c.id, times);
+    const many = (settings as Record<string, unknown>).pokeManyCount as number ?? 4;
+    if (r !== 'wake' && times.length >= many) {
+      c.bubble.say('pokeMany');
+      pokeTimes.set(c.id, []);
     }
-    if (where === 'head') {
-      motion.react('shy');
-      physics.kick(5);
-      bubble.say('head');
-    } else if (where === 'cheek') {
-      motion.react('puff');
-      physics.kick(2);
-      bubble.say('cheek');
-    } else {
-      motion.react('body');
-      physics.kick(2.5);
-      bubble.say('body');
+    // 另一個人會轉頭看，偶爾吐槽一句
+    for (const o of others(c)) {
+      if (o.motion.sleeping) continue;
+      lookAtOther(o, c, 1.8);
+      if (r !== 'wake' && Math.random() < 0.45) {
+        later(0.9, () => o.bubble.say('otherPoked'));
+      }
     }
   };
-  const forceSleep = () => {
-    motion.sleeping = true;
+
+  // 依時間挑台詞：早上／中午／下午／晚上／深夜
+  const timeKind = () => {
+    const h = bg.hour ?? new Date().getHours() + new Date().getMinutes() / 60;
+    if (h >= 5 && h < 11) return 'morning';
+    if (h >= 11 && h < 14) return 'noon';
+    if (h >= 14 && h < 18) return 'afternoon';
+    if (h >= 18 && h < 22) return 'evening';
+    return 'lateNight';
   };
-  const debug = debugMode ? new DebugPanel(poke, forceSleep) : null;
+  const timeChance = ((settings as Record<string, unknown>).timeLineChance as number) ?? 0.35;
+  const sayTimed = (c: Character, kind: 'idle' | 'greeting') =>
+    c.bubble.say(Math.random() < timeChance && c.lines[timeKind()]?.length ? timeKind() : kind, false);
+
+  // 離開分頁一段時間再回來，她們會說「歡迎回來」
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = performance.now(); return; }
+    const away = (performance.now() - hiddenAt) / 1000;
+    const need = ((settings as Record<string, unknown>).returnAfterSeconds as number) ?? 60;
+    if (hiddenAt && away > need) {
+      for (const c of chars) c.motion.input();
+      byId('pink').bubble.say('return');
+      later(1.8, () => byId('maid').bubble.say('return'));
+    }
+  });
+
+  // ---- 設定面板：名字、自訂背景 ----
+  const panel = document.getElementById('settings')!;
+  const nameInput = document.getElementById('name-input') as HTMLInputElement;
+  const fileInput = document.getElementById('bg-file') as HTMLInputElement;
+  const clearBtn = document.getElementById('bg-clear') as HTMLButtonElement;
+  const note = document.getElementById('settings-note')!;
+  nameInput.value = getUserName();
+  clearBtn.disabled = !bg.custom;
+  document.getElementById('gear')!.addEventListener('click', () => panel.classList.toggle('open'));
+  document.getElementById('settings-close')!.addEventListener('click', () => panel.classList.remove('open'));
+  document.getElementById('name-save')!.addEventListener('click', () => {
+    setUserName(nameInput.value);
+    saveText('kanban-name', getUserName() || null);
+    if (getUserName()) {
+      byId('pink').bubble.say('nameSet');
+      later(1.6, () => byId('maid').bubble.say('nameSet'));
+    }
+    note.textContent = getUserName() ? `好，之後會叫你「${getUserName()}」。` : '名字清掉了，改回預設的叫法。';
+  });
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    // 太大的圖縮到 2560 寬再存，省空間
+    const img = await blobImage(f).catch(() => null);
+    if (!img) { note.textContent = '這個檔案打不開，換一張圖試試看。'; return; }
+    const k = Math.min(1, 2560 / img.naturalWidth);
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.naturalWidth * k);
+    cv.height = Math.round(img.naturalHeight * k);
+    cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise<Blob | null>((ok) => cv.toBlob(ok, 'image/jpeg', 0.9));
+    if (!blob) return;
+    bg.custom = await blobImage(blob);
+    const okSaved = await saveBlob('background', blob);
+    note.textContent = okSaved ? '換好了！這張圖會記在這台電腦的瀏覽器裡。' : '換好了，但這個瀏覽器存不了，重新整理後會不見。';
+    clearBtn.disabled = false;
+    setBg('custom');
+    byId('pink').bubble.say('bgChanged');
+    later(1.6, () => byId('maid').bubble.say('bgChanged'));
+    fileInput.value = '';
+  });
+  clearBtn.addEventListener('click', async () => {
+    bg.custom = null;
+    await saveBlob('background', null);
+    clearBtn.disabled = true;
+    note.textContent = '自訂背景刪掉了。';
+    if (bg.mode === 'custom') setBg('photo');
+  });
+
+  const debug = debugMode
+    ? new DebugPanel(
+        chars.map((c) => ({ id: c.id, name: c.def.name })),
+        (id, where) => poke(byId(id), where as 'head' | 'cheek' | 'body'),
+        (id) => (byId(id).motion.sleeping = true),
+      )
+    : null;
 
   // ---- 滑鼠 / 觸控 ----
-  const toCanvas = (cx: number, cy: number) => {
-    const r = canvas.getBoundingClientRect();
-    return [((cx - r.left) / r.width) * rig.canvas.w, ((cy - r.top) / r.height) * rig.canvas.h];
-  };
+  /** 最上面、而且這一點有畫到的角色 */
+  const charAt = (x: number, y: number) => [...chars].reverse().find((c) => c.opaqueAt(x, y)) ?? null;
   window.addEventListener('pointermove', (e) => {
-    const [x, y] = toCanvas(e.clientX, e.clientY);
-    const r = canvas.getBoundingClientRect();
-    const [hx, hy] = rig.headCenter;
-    // 以頭為中心，螢幕寬度的一部分當作 ±1
-    const sx = (x - hx) / ((window.innerWidth / r.width) * rig.canvas.w * 0.45);
-    const sy = -(y - hy) / ((window.innerHeight / r.height) * rig.canvas.h * 0.45);
-    const woke = motion.input();
-    if (woke) {
-      bubble.say('wake');
-      physics.kick(3);
+    for (const c of chars) {
+      if (c.motion.input()) {
+        c.bubble.say('wake');
+        c.physics.kick(3);
+        c.physics.flick(4);
+      }
+      const [gx, gy] = c.gazeTo(e.clientX, e.clientY);
+      c.motion.look(gx, gy);
     }
-    motion.look(sx * 1.6, sy * 1.6);
+    document.body.style.cursor = charAt(e.clientX, e.clientY) ? 'pointer' : '';
   });
-  canvas.addEventListener('pointerdown', (e) => {
-    const [x, y] = toCanvas(e.clientX, e.clientY);
-    poke(hitTest(x, y));
+  window.addEventListener('pointerdown', (e) => {
+    const c = charAt(e.clientX, e.clientY);
+    if (c) poke(c, c.hitTest(e.clientX, e.clientY));
   });
-  window.addEventListener('keydown', () => motion.input());
+  window.addEventListener('keydown', () => chars.forEach((c) => c.motion.input()));
 
-  function hitTest(x: number, y: number) {
-    for (const s of ['L', 'R'] as const) {
-      const [bx, by] = rig.blush[s];
-      if (Math.hypot(x - bx, (y - by) * 1.3) < 52) return 'cheek';
-    }
-    const [hx, hy] = rig.headCenter;
-    if (y < hy + 10 && Math.hypot(x - hx, y - hy) < rig.headRadius * 1.15) return 'head';
-    if (y < rig.neck[1] - 10 && Math.abs(x - hx) < rig.headRadius) return 'cheek';
-    return 'body';
-  }
-
-  // ---- 麥克風 ----
+  // ---- 麥克風（兩個人都會跟著你的聲音動嘴巴）----
+  const lip = new LipSync();
   const micBtn = document.getElementById('mic') as HTMLButtonElement;
   micBtn.addEventListener('click', async () => {
-    motion.input();
+    chars.forEach((c) => c.motion.input());
+    const host = byId('pink');
     if (lip.active) {
       lip.stop();
       micBtn.classList.remove('on');
       micBtn.textContent = '🎤 對嘴';
-      motion.mic = -1;
-      bubble.say('micOff');
+      host.bubble.say('micOff');
       return;
     }
     try {
       await lip.start();
       micBtn.classList.add('on');
       micBtn.textContent = '🎤 對嘴中（再按一次關閉）';
-      bubble.say('micOn');
+      host.bubble.say('micOn');
+      later(1.2, () => byId('maid').bubble.say('micOn'));
     } catch (err) {
       console.warn(err);
-      bubble.say('micError');
+      host.bubble.say('micError');
     }
   });
 
   // ---- 主迴圈 ----
-  let params: Params = defaultParams();
   let last = performance.now();
   let frozen = false;
+  let nextIdleLine = 2.5;
 
-  const frame = (dt: number) => {
-    let p = motion.update(dt);
-    if (lip.active) {
-      motion.mic = lip.read(dt);
-      motion.input(); // 有在講話就不會睡著
+  const frame = (dt: number, draw = true) => {
+    t += dt;
+    for (let i = timers.length - 1; i >= 0; i--) {
+      if (t >= timers[i].at) timers.splice(i, 1)[0].fn();
     }
-    motion.talk = bubble.typing && !lip.active ? 1 : Math.max(0, motion.talk - dt * 4);
-    if (debug?.manual) p = { ...defaultParams(), ...debug.values };
+    const mic = lip.active ? lip.read(dt) : null;
+    for (const c of chars) {
+      c.manual = debug?.manual && debug.target === c.id ? debug.values : null;
+      c.frame(dt, mic);
+    }
 
-    // 物理：頭的水平位置 + 傾斜
-    const headPx = (p.angleX / 30) * 22 + p.bodyX * 1.3;
-    const tilt = (p.angleZ / 30) * 0.17 + (p.bodyZ / 10) * 0.05;
-    physics.update(dt, headPx, tilt);
-    const phys: Params = {};
-    physics.write(phys, tilt);
-    for (const k of Object.keys(phys)) p[k] = (debug?.manual ? p[k] : 0) + phys[k];
+    // 對話：上一句講完就換下一個人
+    if (duo.length && t > duoNext) {
+      const [who, text] = duo.shift()!;
+      const c = byId(who);
+      if (c && !c.motion.sleeping) {
+        c.bubble.show(text);
+        for (const o of others(c)) {
+          lookAtOther(o, c, 2.2);
+          lookAtOther(c, o, 1.6);
+        }
+        duoNext = t + 1.2 + text.length * 0.11;
+      } else duo = [];
+    }
 
-    clampParams(p);
-    params = p;
-
-    // 隨機台詞
-    bubble.update(dt);
-    if (motion.t > nextIdleLine) {
-      const [a, b] = lines.settings.idleLineEverySeconds;
-      nextIdleLine = motion.t + a + Math.random() * (b - a);
-      if (motion.sleeping) bubble.say('sleep', false);
-      else if (!bubble.visible) bubble.say(motion.t < 5 ? 'greeting' : 'idle', false);
+    // 隨機台詞（偶爾兩個人聊起來）
+    if (t > nextIdleLine) {
+      const [a, b] = settings.idleLineEverySeconds;
+      nextIdleLine = t + rand(a, b);
+      const awake = chars.filter((c) => !c.motion.sleeping);
+      const busy = duo.length || chars.some((c) => c.bubble.visible);
+      if (t < 5) {
+        const [first, second] = awake.length === chars.length ? [byId('pink'), byId('maid')] : [null, null];
+        if (first) sayTimed(first, 'greeting');
+        later(1.6, () => second?.motion.sleeping === false && sayTimed(second, 'greeting'));
+      } else if (!busy && awake.length === chars.length && Math.random() < settings.duoChance) {
+        startDuo(Math.floor(Math.random() * lines.duo.length));
+      } else {
+        for (const c of chars) if (c.motion.sleeping) c.bubble.say('sleep', false);
+        if (!busy && awake.length) sayTimed(pick(awake), 'idle');
+      }
     }
     bg.update(dt);
-    render();
+    if (draw) render();
   };
 
   const render = () => {
     bg.draw();
-    for (const part of parts) {
-      model.deform(part.layer, part.item.mesh, params);
-      part.item.alpha = part.item.hidden ? 0 : model.alpha(part.layer.name, params);
-    }
-    renderer.draw(items, !!debug?.wire);
-    debug?.sync(params);
+    for (const c of chars) c.render(!!debug?.wire);
+    const tgt = debug ? byId(debug.target) : null;
+    if (tgt) debug!.sync(tgt.params);
   };
 
   const loop = (now: number) => {
@@ -199,16 +306,20 @@ async function main() {
   };
   requestAnimationFrame(loop);
 
-  // 給截圖腳本與自己調整用的介面
+  // 給截圖腳本與自己調整用的介面；who 不寫就是主角（pink），'all' 是兩個人
+  const sel = (who = 'pink') => (who === 'all' ? chars : [byId(who)]);
   (window as unknown as { kanban: unknown }).kanban = {
-    params: () => ({ ...params }),
+    chars: Object.fromEntries(chars.map((c) => [c.id, c])),
+    params: (who = 'pink') => ({ ...byId(who).params }),
     paramList: PARAMS,
     /** 停止自動動作，直接指定參數並重畫 */
-    pose(values: Params) {
+    pose(values: Params, who = 'pink') {
       frozen = true;
-      params = { ...defaultParams(), ...values };
-      clampParams(params);
-      render();
+      bg.draw();
+      for (const c of chars) {
+        if (sel(who).includes(c)) c.pose(values);
+        else c.render();
+      }
     },
     /** 恢復自動動作 */
     resume() {
@@ -218,20 +329,25 @@ async function main() {
     /** 用固定的時間步長往前跑 n 秒（截圖用，結果和電腦快慢無關） */
     advance(seconds: number, step = 1 / 60) {
       frozen = true;
-      for (let t = 0; t < seconds; t += step) frame(step);
+      for (let s = 0; s < seconds; s += step) frame(step, s + step >= seconds);
     },
-    /** 隱藏某些部位（除錯用），例如 kanban.hide(['front_hair']) */
-    hide(names: string[]) {
-      for (const part of parts) part.item.hidden = names.includes(part.layer.name);
-      render();
+    /** 隱藏某些部位（除錯用），例如 kanban.hide(['front_hair'], 'maid') */
+    hide(names: string[], who = 'pink') {
+      sel(who).forEach((c) => c.hide(names));
     },
-    poke,
-    sleep: forceSleep,
+    poke(where: 'head' | 'cheek' | 'body', who = 'pink') {
+      poke(byId(who), where);
+    },
+    sleep(who = 'all') {
+      sel(who).forEach((c) => (c.motion.sleeping = true));
+    },
     lookAt(x: number, y: number) {
-      motion.look(x, y);
+      chars.forEach((c) => c.motion.look(x, y));
     },
-    physics,
-    motion,
+    /** 馬上開始一段兩個人的對話（第 i 段） */
+    chat(i = 0) {
+      startDuo(i);
+    },
   };
   document.body.dataset.ready = '1';
 }

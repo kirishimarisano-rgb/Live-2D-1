@@ -1,6 +1,6 @@
 # 網頁看板娘
 
-用一張平面的二次元角色圖做出像 Live2D 那樣會動的看板娘。沒有用 Live2D SDK 或任何角色動畫函式庫，網格變形、物理、眨眼、對嘴全部是自己用 TypeScript + WebGL 寫的。
+用平面的二次元角色圖做出像 Live2D 那樣會動的看板娘，現在有兩個人：右下角的粉紅雙馬尾，和從左下角探頭的藍色垂耳女僕。沒有用 Live2D SDK 或任何角色動畫函式庫，網格變形、物理、眨眼、對嘴全部是自己用 TypeScript + WebGL 寫的。
 
 > 圖是別人畫的，自己玩沒問題，但**不要公開發布**（這個 repo 請保持私人）。
 
@@ -8,12 +8,13 @@
 
 雙擊 **`dist/index.html`** 就能打開（單一檔案，圖片都內嵌在裡面，不用架伺服器）。
 
-- 眼睛和頭會跟著滑鼠轉（眼睛比頭快）
-- 戳**頭**：害羞瞇眼、臉紅
+- 兩個人的眼睛和頭都會跟著滑鼠轉（眼睛比頭快，女僕慢半拍）
+- 戳**頭**：害羞瞇眼、臉紅（女僕的垂耳會抖一下）
 - 戳**臉頰**：鼓起來
-- 滑鼠**不動 15 秒**：開始打瞌睡，再戳她一下或動滑鼠就會驚醒
-- 按「🎤 對嘴」：允許麥克風後，她的嘴巴會跟著你的聲音動
-- 右下角的對話框會隨機說話
+- 戳其中一個，另一個會轉頭看她，有時候還會吐槽一句
+- 滑鼠**不動 15 秒**：開始打瞌睡（女僕比較愛睏，大約 10 秒就睡了），再戳一下或動滑鼠就會驚醒
+- 按「🎤 對嘴」：允許麥克風後，兩個人的嘴巴都會跟著你的聲音動
+- 兩個人會隨機說話，偶爾會互相聊起來（主角是右下角的對話框，女僕是原圖那種想法泡泡）
 - 網址後面加 `?debug=1`（例如 `dist/index.html?debug=1`）：顯示網格線和所有參數滑桿
 - 背景的窗外會跟著你電腦現在的時間變成白天、黃昏或晚上；想固定的話加 `?hour=20`（0～24，可以和 debug 一起用：`?debug=1&hour=18`）
 
@@ -32,15 +33,17 @@ npm run build    # 打包成 dist/index.html
 重新切圖需要 Python 3 和 `pip install pillow numpy opencv-python-headless`：
 
 ```bash
-npm run parts    # = python3 tools/cutout.py && python3 tools/segment.py
-python3 tools/rig_sheet.py   # 重新產生 RIG.md 用的圖
+npm run parts    # 兩個角色都重切：tools/pink2_segment.py（主角）、maid2_align.py + maid_cutout.py + maid_segment.py（女僕）
+python3 tools/rig_sheet.py pink   # 重新產生 RIG.md 用的圖（maid 也可以）
+python3 tools/compose.py maid out.png front_hair   # 把部位疊回去看看（第三個參數是要藏起來的部位）
 ```
 
 截圖檢查需要 Playwright（`npm i -D playwright && npx playwright install chromium`）：
 
 ```bash
-npm run build && node tools/shots.mjs m5        # 全部姿勢存到 screenshots/m5-*.png
+npm run build && node tools/shots.mjs m7        # 兩個角色的全部姿勢存到 screenshots/m7-pink-*.png、m7-maid-*.png
 node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
+node tools/zoom.mjs out.png 140,380,440,560 '[{},{"eyeLOpen":0}]' maid   # 近拍某一塊的幾個姿勢
 ```
 
 ## 改台詞
@@ -49,37 +52,63 @@ node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
 
 不想重新打包的話，也可以直接用文字編輯器打開 `dist/index.html`，最上面有一段 `<script type="application/json" id="lines-data">`，裡面就是同一份台詞，直接改那裡也有效。
 
+`"pink"` 是主角的台詞、`"maid"` 是女僕的台詞，兩邊的欄位一樣：
+
 | 欄位 | 什麼時候說 |
 |---|---|
 | `greeting` | 剛打開 |
 | `idle` | 沒事的時候隨機說 |
 | `head` / `cheek` / `body` | 被戳頭、臉頰、身體 |
 | `sleep` / `wake` | 打瞌睡中、被叫醒 |
+| `otherPoked` | 另一個人被戳的時候（不一定每次都說） |
 | `micOn` / `micOff` / `micError` | 開關麥克風、麥克風不能用 |
-| `settings.sleepAfterSeconds` | 滑鼠多久不動就打瞌睡（秒） |
-| `settings.idleLineEverySeconds` | 隨機說話的間隔 `[最短, 最長]`（秒） |
-| `settings.showSeconds` | 對話框停留多久（秒，長句會自動加長） |
+
+`"duo"` 是兩個人的對話，每一段是一串 `["誰", "台詞"]`，會照順序一句一句講，例如：
+
+```json
+[["maid", "……要喝茶嗎？"], ["pink", "好啊！要加很多糖喔～"], ["maid", "……好。"]]
+```
+
+`"settings"`：
+
+| 欄位 | 意思 |
+|---|---|
+| `sleepAfterSeconds` | 滑鼠多久不動就打瞌睡（秒；女僕是這個的 0.7 倍） |
+| `idleLineEverySeconds` | 隨機說話的間隔 `[最短, 最長]`（秒） |
+| `duoChance` | 該說話的時候，改成兩個人聊天的機率（0～1） |
+| `showSeconds` | 對話框停留多久（秒，長句會自動加長） |
 
 ## 調參數
 
-1. 打開 `?debug=1`，左邊有所有參數的滑桿。拉任何一個就會切到「手動」模式（停止自動動作，但頭髮物理還是會動），勾掉「手動」就恢復自動。
-2. 找到喜歡的數值後，改程式裡對應的地方：
+1. 打開 `?debug=1`，左邊有所有參數的滑桿，最上面可以選要控制哪個角色（面板擋到女僕的話按「收合」）。拉任何一個就會切到「手動」模式（停止自動動作，但頭髮物理還是會動），勾掉「手動」就恢復自動。
+2. 找到喜歡的數值後，改程式裡對應的地方。每個角色自己的設定都在 **`src/chars/<角色>/index.ts`**（`pink` 是主角、`maid` 是女僕）：
 
 | 想改的 | 檔案 | 位置 |
 |---|---|---|
 | 參數範圍、預設值 | `src/params.ts` | `PARAMS` |
-| 各部位轉頭時的立體感（視差） | `src/model.ts` | `PART_CONF` 的 `depth`：越大越靠前、動越多；負數會往反方向動 |
-| 轉頭幅度、眼睛和頭追滑鼠的速度 | `src/motion.ts` | 「視線」那段：`follow(..., 0.07)` 是眼睛、`0.38` 是頭（秒，越小越快）；`* 24`、`* 18` 是最大角度 |
-| 眨眼頻率、連眨機率 | `src/motion.ts` | 「眨眼」那段：`rand(1.8, 5.5)` 秒眨一次、`0.18` 是連眨機率 |
+| 各部位轉頭時的立體感（視差） | `src/chars/<角色>/index.ts` | `conf.parts` 的 `depth`：越大越靠前、動越多；負數會往反方向動 |
+| 頭髮擺動的範圍、呆毛／垂耳長度、歪頭角度、嘴巴寬度 | `src/chars/<角色>/index.ts` | `conf.tune` |
+| 轉頭幅度、眼睛和頭追滑鼠的速度、眨眼頻率、多容易睡著 | `src/chars/<角色>/index.ts` | `persona`（沒寫的用 `src/motion.ts` 的 `DEFAULT_PERSONA`）：`headTau`／`eyeTau` 是追上視線要幾秒（越小越快）、`angle` 是最大角度、`blink` 是眨眼間隔、`doubleBlink` 是連眨機率、`sleepFactor` 越小越容易睡 |
 | 呼吸、晃動 | `src/motion.ts` | 「呼吸與晃動」那段 |
 | 害羞、鼓臉、驚醒的表情 | `src/motion.ts` | 「反應」那段，每種反應各自設定要改哪些參數 |
-| 頭髮、馬尾、呆毛、耳環的晃法 | `src/physics.ts` | `HairPhysics.parts`：`stiff` 越大越硬、`damping` 越大越快停、`inertia` 越大越容易被甩 |
-| 網格密度 | `src/model.ts` | `PART_CONF` 的 `cell`（px，越小越細） |
+| 頭髮、馬尾、呆毛、耳環、垂耳的晃法 | `src/physics.ts` | `HairPhysics.parts`：`stiff` 越大越硬、`damping` 越大越快停、`inertia` 越大越容易被甩 |
+| 網格密度 | `src/chars/<角色>/index.ts` | `conf.parts` 的 `cell`（px，越小越細） |
+| 兩個人的位置和大小 | `index.html` | `#stage-pink`、`#stage-maid` 的 `height` |
+| 戳了之後另一個人的反應、聊天的節奏 | `src/main.ts` | 「兩個人之間」那段和主迴圈裡的「對話」 |
 | 呆毛、馬尾的待機晃動 | `src/physics.ts` | `update()` 裡 `this.ahoge.step(...)`、`this.tail.step(...)` 的正弦波大小；`breeze = 0` 就完全不晃 |
 | 背景（窗戶、天空顏色、花瓣、串燈） | `src/background.ts` | `SKY` 是每個時刻的天空顏色；花瓣數量在建構子的 `26` |
 | 麥克風靈敏度 | `src/lipsync.ts` | `(rms - ...) * 9` 的 `9` |
 
-## 換成別的角色圖
+## 換成別的角色圖、再加一個角色
+
+每個角色是 `src/chars/<角色>/` 一個資料夾：`parts/*.png`（部位圖）、`rig.json`（位置、層級、樞紐）、`index.ts`（深度、擺動範圍、個性）。要再加一個角色：
+
+1. 照下面 A 或 B 做出 `parts/` 和 `rig.json`
+2. 複製 `src/chars/maid/index.ts` 改名字和數值
+3. 在 `src/main.ts` 的 `defs` 加上它，`index.html` 加一個 `<div class="stage" id="stage-<角色>"><canvas></canvas></div>` 和對話框 `<div id="bubble-<角色>">`，CSS 設定它的位置
+4. `src/lines.json` 加一段 `"<角色>": { ... }` 台詞
+
+女僕的原圖右邊和下面被切掉，所以 `tools/maid_segment.py` 把切到的兩邊往外多補一圈（`PAD_R`、`PAD_B`），再整張左右翻轉（`FLIP`），讓她從畫面左下角探頭：補出來的那一圈放在畫面外，轉頭、歪頭時才不會露出切口。不想翻轉的話把 `FLIP = False`，再把 `index.html` 裡她的位置改到右邊。
 
 ### 做法 A：自己準備分好的圖層（效果最好）
 
@@ -89,15 +118,15 @@ node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
 
    （`L` 是畫面左邊那一隻）
 
-2. 寫一個小腳本把它們裁到最小外框、放進 `src/assets/parts/`，並更新 `src/assets/rig.json`：每個部位的 `x, y, w, h`（在畫布上的位置）、`z`（層級）、馬尾／呆毛／耳環的 `pivot`（樞紐）、瞳孔的 `center`、張嘴的 `anchor`。可以直接參考 `tools/segment.py` 最後面 `save_layer()` 的寫法。
+2. 寫一個小腳本把它們裁到最小外框、放進 `src/chars/<角色>/parts/`，並更新 `src/chars/<角色>/rig.json`：每個部位的 `x, y, w, h`（在畫布上的位置）、`z`（層級）、馬尾／呆毛／耳環的 `pivot`（樞紐）、瞳孔的 `center`、張嘴的 `anchor`。可以直接參考 `tools/segment.py` 最後面 `save_layer()` 的寫法。
 3. `rig.json` 裡還要改：`headCenter`、`headRadius`（頭部中心和半徑）、`neck`（脖子）、`bodyPivot`（身體底部中心）、`mouth`、`blush`（兩頰中心）、`eyes.L/R.top`（睫毛下緣的點，左到右）、`eyes.L/R.bot`（下眼緣的點，左到右，最後回到右上角）、`eyes.L/R.iris`（瞳孔中心 x, y 和半徑）。
-4. 部位名稱不一樣或沒有某個部位，就到 `src/model.ts` 的 `PART_CONF` 和 `deform()` 裡增減。
+4. 部位名稱不一樣或沒有某個部位，就到 `src/chars/<角色>/index.ts` 的 `conf.parts` 和 `src/model.ts` 的 `deform()` 裡增減（沒有的部位直接不放就好，例如女僕沒有側馬尾、耳環和閉嘴的圖）。
 5. `npm run build`，用 `?debug=1` 看網格和拉參數檢查。
 
 ### 做法 B：只有一張平面圖
 
-1. 圖放進 `art/`，改 `tools/cutout.py` 讀的檔名。背景如果不是純色條紋，就要改去背的方法（或先自己去背成透明 PNG，跳過這一步直接存成 `build/cutout.png`）。
-2. 打開 `tools/segment.py`，最上面的座標全部是原圖的像素座標，照新圖重新量：
+1. 圖放進 `art/`，改 `tools/cutout.py` 讀的檔名。背景如果不是純色條紋，就要改去背的方法（白底的圖可以參考 `tools/maid_cutout.py`，或先自己去背成透明 PNG，跳過這一步直接存成 `build/cutout.png`）。
+2. 打開 `tools/segment.py`（白底、Q 版的圖參考 `tools/maid_segment.py`），最上面的座標全部是原圖的像素座標，照新圖重新量：
    - `P['body']`（脖子以下）、`P['tail']`、`P['headdress']`、`P['ahoge']`、`P['face']`、`P['earring']`…：各部位的多邊形
    - `EYES`：每隻眼睛的 `top`（睫毛下緣）、`bot`（下眼緣）、`iris`（瞳孔中心與半徑）、`seed`（睫毛上的一點）、`lashbox`（睫毛所在的方框）、`brow`（眉毛三個點）
    - `MOUTH_BOX`、`MOUTH_C`、`NOSE`、`BLUSH`
@@ -108,11 +137,20 @@ node tools/shots.mjs test eyes-closed corner     # 只拍某幾個
 ## 檔案結構
 
 ```
-art/              原始圖（主圖 ref-main-flag.png，另外兩張是參考）
-tools/            切圖腳本（Python）、截圖腳本（Playwright）
-src/assets/       切好的部位圖與 rig.json
-src/              渲染器、變形器、物理、動作、對嘴、對話框、debug 面板
-screenshots/      各里程碑的檢查截圖
-dist/index.html   打包好的單一檔案
+art/                原始圖（主角 pink2/expression_01..12.png，舊版 ref-main-flag.png；女僕 ref-maid.jpg、新的表情組 maid2/）
+tools/              切圖腳本（Python）、截圖腳本（Playwright）
+src/chars/pink/     主角：切好的部位圖、rig.json、設定 index.ts
+src/chars/maid/     女僕：同上
+src/character.ts    一個角色（畫布、網格、物理、動作、對話框）
+src/main.ts         放兩個角色、滑鼠、麥克風、兩個人之間的互動
+src/                渲染器、變形器、物理、動作、對嘴、對話框、背景、debug 面板
+screenshots/        各里程碑的檢查截圖
+dist/index.html     打包好的單一檔案
 PLAN.md / PROGRESS.md / RIG.md
 ```
+
+## 給朋友玩
+
+整個看板娘就是 `dist/index.html` 這一個檔案，私下傳給朋友（聊天軟體直接傳檔案），朋友用電腦或手機的瀏覽器打開就能玩，不用安裝。
+名字和自訂背景是存在各自的瀏覽器裡，每個人設定自己的，互不影響。
+角色圖不是自己畫的，所以只私下給朋友玩，不要放到公開網站或社群上。
