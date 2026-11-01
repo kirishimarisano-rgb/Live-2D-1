@@ -23,6 +23,11 @@ export function loadLines(): Lines {
   return bundled;
 }
 
+// 台詞裡的 {name} 換成使用者設定的名字（沒設定就用角色自己的叫法，例如「你」「主人」）
+let userName = '';
+export const setUserName = (n: string) => { userName = n.trim().slice(0, 20); };
+export const getUserName = () => userName;
+
 export class Bubble {
   private text = '';
   private shown = 0;
@@ -32,7 +37,7 @@ export class Bubble {
   /** 正在打字（用來讓嘴巴動） */
   typing = false;
 
-  constructor(private el: HTMLElement, private lines: CharLines, private showSeconds: number) {}
+  constructor(private el: HTMLElement, private lines: CharLines, private showSeconds: number, private defaultName = '你') {}
 
   say(kind: string, force = true) {
     const list = this.lines[kind];
@@ -46,6 +51,7 @@ export class Bubble {
 
   /** 直接說一句話 */
   show(line: string) {
+    line = line.split('{name}').join(userName || this.defaultName);
     this.text = line;
     this.shown = 0;
     this.hideAt = this.t + this.showSeconds + line.length * 0.06;

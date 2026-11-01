@@ -72,3 +72,9 @@
 - 右上角「🖼 背景」切換圖片房間／原本程式畫的小窗戶房間，選擇記在瀏覽器；網址 `?bg=room`、`?bg=photo`、`?hour=` 可指定
 - 截圖 `screenshots/m10-bg-*.png`
 - 粉紅的長髮：垂到胸前的兩撮長髮另外切成 `hair_long`，根部跟頭、髮尾跟著頭髮物理擺動（`tune.hairLong`）；截圖 `screenshots/m10-long-hair.png`
+
+## M11 台詞擴充、名字、自訂背景 ✅
+- `src/lines.json`：粉紅 104 句、女僕 79 句、雙人對話 16 段。新類別：依時間的 `morning`／`noon`／`afternoon`／`evening`／`lateNight`（閒聊和打招呼有 35% 機率改說這些）、戳太多次的 `pokeMany`、離開分頁一分鐘以上回來的 `return`、`nameSet`、`bgChanged`
+- 台詞裡可以寫 `{name}`：換成「⚙ 設定」裡填的名字，沒填的話粉紅說「你」、女僕說「主人」
+- 「⚙ 設定」面板：名字、上傳自己的背景圖（縮到 2560 寬、存在瀏覽器的 IndexedDB）、刪掉自訂背景；「🖼 背景」按鈕在 房間圖／小窗戶／我的圖 之間切換
+- 截圖 `screenshots/m11-settings.png`；用 Playwright 測過：填名字、上傳圖、重新整理後名字和背景都還在

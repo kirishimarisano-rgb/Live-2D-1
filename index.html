@@ -50,9 +50,22 @@
   }
   #bgbtn { position: fixed; right: 16px; top: 52px; z-index: 6; border: 2px solid #f3b7c7; background: #fff; color: var(--ink);
     border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  #gear { position: fixed; right: 16px; top: 90px; z-index: 6; border: 2px solid #f3b7c7; background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  #settings { position: fixed; right: 16px; top: 130px; z-index: 7; width: 270px; display: none; flex-direction: column; gap: 10px;
+    background: #fff; border: 2px solid #f3b7c7; border-radius: 14px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
+    box-shadow: 0 6px 18px rgba(170, 80, 110, .18); }
+  #settings.open { display: flex; }
+  #settings label { display: flex; flex-direction: column; gap: 4px; }
+  #settings .row { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+  #settings input[type=text], #settings #name-input { flex: 1; min-width: 0; border: 1px solid #f0c3d0; border-radius: 8px; padding: 4px 8px; font: inherit; }
+  #settings button { border: 1px solid #f0c3d0; background: #fff6f9; color: var(--ink); border-radius: 8px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  #settings button:disabled { opacity: .45; cursor: default; }
+  #settings-close { border: none !important; background: none !important; }
+  #settings-note { margin: 0; color: #9a6a7c; font-size: 12px; }
   #mic.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   @media (max-width: 600px) {
-    .hint { display: none; } #mic { top: 10px; } #bgbtn { top: 46px; }
+    .hint { display: none; } #mic { top: 10px; } #bgbtn { top: 46px; } #gear { top: 82px; } #settings { top: 120px; right: 10px; }
     /* 手機太窄放不下兩個人並排：主角往右挪一點，女僕縮小疊在前面 */
     #stage-pink { --h: 62vh; right: -80px; }
     #stage-maid { --h: 32vh; z-index: 4; }
@@ -67,12 +80,24 @@
   戳<b>頭</b>會害羞，戳<b>臉頰</b>會鼓起來，另一個會轉頭看，<br />
   滑鼠太久不動她們會<b>打瞌睡</b>（女僕比較愛睏），偶爾兩個人會聊天。<br />
   按「🎤 對嘴」她們會跟著你的聲音張嘴。<br />
-  右上角「🖼 背景」可以換背景，房間圖會跟著現在時間變白天／黃昏／晚上。<br>
+  右上角「🖼 背景」可以換背景，房間圖會跟著現在時間變白天／黃昏／晚上；「⚙ 設定」可以讓她們叫你的名字、上傳自己的背景圖。<br>
   網址加上 <code>?debug=1</code> 可以看網格線、自己拉參數。
 </div>
 <div class="stage" id="stage-maid"><canvas></canvas><div id="bubble-maid"></div></div>
 <div class="stage" id="stage-pink"><canvas></canvas></div>
 <button id="mic" title="讓她們的嘴巴跟著你的聲音動">🎤 對嘴</button>
+<button id="gear" title="設定：名字、上傳自己的背景">⚙ 設定</button>
+<div id="settings">
+  <div class="row"><b>設定</b><button id="settings-close" title="關閉">✕</button></div>
+  <label>她們怎麼叫你
+    <span class="row"><input id="name-input" maxlength="20" placeholder="例如：Kri（空白＝你／主人）" /><button id="name-save">記住</button></span>
+  </label>
+  <label>上傳自己的背景圖
+    <input id="bg-file" type="file" accept="image/*" />
+  </label>
+  <button id="bg-clear">刪掉自訂背景</button>
+  <p id="settings-note">名字和背景只存在這台電腦的瀏覽器裡，不會上傳到任何地方。</p>
+</div>
 <button id="bgbtn" title="切換背景（圖片房間會跟著現在的時間變白天／黃昏／晚上）">🖼 背景</button>
 <div id="bubble-pink"></div>
 <script type="module" src="/src/main.ts"></script>

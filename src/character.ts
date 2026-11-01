@@ -15,6 +15,8 @@ export interface CharDef {
   images: Record<string, string>;
   conf: CharConf;
   persona?: Partial<Persona>;
+  /** 台詞裡 {name} 沒設定名字時的叫法 */
+  callYou?: string;
 }
 
 interface Part {
@@ -55,7 +57,7 @@ export class Character {
     this.renderer = new Renderer(this.canvas, def.rig.canvas.w, def.rig.canvas.h);
     this.model = new Model(def.rig, def.conf);
     this.motion = new Motion(def.persona);
-    this.bubble = new Bubble(bubbleEl, lines, showSeconds);
+    this.bubble = new Bubble(bubbleEl, lines, showSeconds, def.callYou ?? '你');
   }
 
   async load() {

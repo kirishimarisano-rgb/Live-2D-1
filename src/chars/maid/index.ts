@@ -51,5 +51,6 @@ export const maid: CharDef = {
     },
   },
   // 比較愛睏、動作慢半拍
+  callYou: '主人',
   persona: { headTau: 0.6, eyeTau: 0.12, blink: [2.6, 6.5], doubleBlink: 0.1, sleepFactor: 0.7, angle: [20, 14], sway: 0.8 },
 };

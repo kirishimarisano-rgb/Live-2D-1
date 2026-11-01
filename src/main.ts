@@ -3,9 +3,10 @@ import { pink } from './chars/pink';
 import { maid } from './chars/maid';
 import { PARAMS, type Params } from './params';
 import { LipSync } from './lipsync';
-import { loadLines } from './bubble';
+import { getUserName, loadLines, setUserName } from './bubble';
 import { DebugPanel } from './debug';
 import { Background } from './background';
+import { blobImage, loadBlob, loadText, saveBlob, saveText } from './store';
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
@@ -16,23 +17,32 @@ async function main() {
   const bg = new Background(document.getElementById('bg') as HTMLCanvasElement);
   // ?hour=20 可以固定背景的時刻（0～24），不加就用現在的時間
   if (qs.has('hour')) bg.hour = parseFloat(qs.get('hour')!);
-  // 背景：圖片房間／程式畫的房間（記在這台瀏覽器，?bg=room 或 ?bg=photo 可指定）
+  // 背景：圖片房間／程式畫的房間／自己上傳的圖（記在這台瀏覽器，?bg=room / photo / custom 可指定）
   const BG_KEY = 'kanban-bg';
-  try {
-    const saved = localStorage.getItem(BG_KEY);
-    if (saved === 'room' || saved === 'photo') bg.mode = saved;
-  } catch { /* 無痕模式之類，用預設 */ }
+  const saved = loadText(BG_KEY);
+  if (saved === 'room' || saved === 'photo' || saved === 'custom') bg.mode = saved;
   const qbg = qs.get('bg');
-  if (qbg === 'room' || qbg === 'photo') bg.mode = qbg;
+  if (qbg === 'room' || qbg === 'photo' || qbg === 'custom') bg.mode = qbg;
+  const customBlob = await loadBlob('background');
+  if (customBlob) bg.custom = await blobImage(customBlob).catch(() => null);
+  if (bg.mode === 'custom' && !bg.custom) bg.mode = 'photo';
   const bgBtn = document.getElementById('bgbtn') as HTMLButtonElement;
-  const bgLabel = () => { bgBtn.textContent = bg.mode === 'photo' ? '🖼 背景：房間圖' : '🖼 背景：小窗戶'; };
-  bgLabel();
-  bgBtn.addEventListener('click', () => {
-    bg.mode = bg.mode === 'photo' ? 'room' : 'photo';
-    try { localStorage.setItem(BG_KEY, bg.mode); } catch { /* 存不了就算了 */ }
+  const BG_NAMES = { photo: '房間圖', room: '小窗戶', custom: '我的圖' } as const;
+  const bgLabel = () => { bgBtn.textContent = `🖼 背景：${BG_NAMES[bg.mode]}`; };
+  const setBg = (m: typeof bg.mode) => {
+    bg.mode = m;
+    saveText(BG_KEY, m);
     bgLabel();
     bg.draw();
+  };
+  bgLabel();
+  bgBtn.addEventListener('click', () => {
+    const order: (typeof bg.mode)[] = bg.custom ? ['photo', 'room', 'custom'] : ['photo', 'room'];
+    setBg(order[(order.indexOf(bg.mode) + 1) % order.length]);
   });
+
+  // 名字：台詞裡的 {name}
+  setUserName(loadText('kanban-name') ?? '');
 
   const lines = loadLines();
   const settings = lines.settings;
@@ -78,9 +88,19 @@ async function main() {
   const timers: { at: number; fn: () => void }[] = [];
   const later = (seconds: number, fn: () => void) => timers.push({ at: t + seconds, fn });
 
+  // 短時間內戳太多次會抗議
+  const pokeTimes = new Map<string, number[]>();
   const poke = (c: Character, where: 'head' | 'cheek' | 'body') => {
     duo = [];
     const r = c.poke(where);
+    const times = (pokeTimes.get(c.id) ?? []).filter((x) => t - x < 6);
+    times.push(t);
+    pokeTimes.set(c.id, times);
+    const many = (settings as Record<string, unknown>).pokeManyCount as number ?? 4;
+    if (r !== 'wake' && times.length >= many) {
+      c.bubble.say('pokeMany');
+      pokeTimes.set(c.id, []);
+    }
     // 另一個人會轉頭看，偶爾吐槽一句
     for (const o of others(c)) {
       if (o.motion.sleeping) continue;
@@ -90,6 +110,81 @@ async function main() {
       }
     }
   };
+
+  // 依時間挑台詞：早上／中午／下午／晚上／深夜
+  const timeKind = () => {
+    const h = bg.hour ?? new Date().getHours() + new Date().getMinutes() / 60;
+    if (h >= 5 && h < 11) return 'morning';
+    if (h >= 11 && h < 14) return 'noon';
+    if (h >= 14 && h < 18) return 'afternoon';
+    if (h >= 18 && h < 22) return 'evening';
+    return 'lateNight';
+  };
+  const timeChance = ((settings as Record<string, unknown>).timeLineChance as number) ?? 0.35;
+  const sayTimed = (c: Character, kind: 'idle' | 'greeting') =>
+    c.bubble.say(Math.random() < timeChance && c.lines[timeKind()]?.length ? timeKind() : kind, false);
+
+  // 離開分頁一段時間再回來，她們會說「歡迎回來」
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = performance.now(); return; }
+    const away = (performance.now() - hiddenAt) / 1000;
+    const need = ((settings as Record<string, unknown>).returnAfterSeconds as number) ?? 60;
+    if (hiddenAt && away > need) {
+      for (const c of chars) c.motion.input();
+      byId('pink').bubble.say('return');
+      later(1.8, () => byId('maid').bubble.say('return'));
+    }
+  });
+
+  // ---- 設定面板：名字、自訂背景 ----
+  const panel = document.getElementById('settings')!;
+  const nameInput = document.getElementById('name-input') as HTMLInputElement;
+  const fileInput = document.getElementById('bg-file') as HTMLInputElement;
+  const clearBtn = document.getElementById('bg-clear') as HTMLButtonElement;
+  const note = document.getElementById('settings-note')!;
+  nameInput.value = getUserName();
+  clearBtn.disabled = !bg.custom;
+  document.getElementById('gear')!.addEventListener('click', () => panel.classList.toggle('open'));
+  document.getElementById('settings-close')!.addEventListener('click', () => panel.classList.remove('open'));
+  document.getElementById('name-save')!.addEventListener('click', () => {
+    setUserName(nameInput.value);
+    saveText('kanban-name', getUserName() || null);
+    if (getUserName()) {
+      byId('pink').bubble.say('nameSet');
+      later(1.6, () => byId('maid').bubble.say('nameSet'));
+    }
+    note.textContent = getUserName() ? `好，之後會叫你「${getUserName()}」。` : '名字清掉了，改回預設的叫法。';
+  });
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    // 太大的圖縮到 2560 寬再存，省空間
+    const img = await blobImage(f).catch(() => null);
+    if (!img) { note.textContent = '這個檔案打不開，換一張圖試試看。'; return; }
+    const k = Math.min(1, 2560 / img.naturalWidth);
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.naturalWidth * k);
+    cv.height = Math.round(img.naturalHeight * k);
+    cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise<Blob | null>((ok) => cv.toBlob(ok, 'image/jpeg', 0.9));
+    if (!blob) return;
+    bg.custom = await blobImage(blob);
+    const okSaved = await saveBlob('background', blob);
+    note.textContent = okSaved ? '換好了！這張圖會記在這台電腦的瀏覽器裡。' : '換好了，但這個瀏覽器存不了，重新整理後會不見。';
+    clearBtn.disabled = false;
+    setBg('custom');
+    byId('pink').bubble.say('bgChanged');
+    later(1.6, () => byId('maid').bubble.say('bgChanged'));
+    fileInput.value = '';
+  });
+  clearBtn.addEventListener('click', async () => {
+    bg.custom = null;
+    await saveBlob('background', null);
+    clearBtn.disabled = true;
+    note.textContent = '自訂背景刪掉了。';
+    if (bg.mode === 'custom') setBg('photo');
+  });
 
   const debug = debugMode
     ? new DebugPanel(
@@ -183,13 +278,13 @@ async function main() {
       const busy = duo.length || chars.some((c) => c.bubble.visible);
       if (t < 5) {
         const [first, second] = awake.length === chars.length ? [byId('pink'), byId('maid')] : [null, null];
-        first?.bubble.say('greeting', false);
-        later(1.6, () => second?.motion.sleeping === false && second.bubble.say('greeting', false));
+        if (first) sayTimed(first, 'greeting');
+        later(1.6, () => second?.motion.sleeping === false && sayTimed(second, 'greeting'));
       } else if (!busy && awake.length === chars.length && Math.random() < settings.duoChance) {
         startDuo(Math.floor(Math.random() * lines.duo.length));
       } else {
         for (const c of chars) if (c.motion.sleeping) c.bubble.say('sleep', false);
-        if (!busy && awake.length) pick(awake).bubble.say('idle', false);
+        if (!busy && awake.length) sayTimed(pick(awake), 'idle');
       }
     }
     bg.update(dt);
