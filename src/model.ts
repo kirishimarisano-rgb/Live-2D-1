@@ -67,6 +67,8 @@ export interface Tune {
   earringLen: number;
   earLen: number;
   /** 閉嘴的半寬、張嘴的半寬 */
+  /** 垂到胸前的長髮（沒有就不用） */
+  hairLong?: SwayConf;
   mouthW: number;
   mouthOpenW: number;
   /** 鼓臉頰時膨起來的中心，相對於臉紅位置往外偏多少（左、右） */
@@ -255,6 +257,14 @@ export class Model {
           const f = Math.pow(clamp((y - h.y0) / h.len, 0, 1), 1.5) * (1 - smooth(h.fade[0], h.fade[1], y));
           x += p.hairFront * 12 * f;
           y += Math.abs(p.hairFront) * 2 * f;
+          break;
+        }
+        case 'hair_long': {
+          // 垂到胸前的長髮：根部跟著頭，越往髮尾擺越大
+          const h = tune.hairLong ?? { y0: 560, len: 400, fade: [1e9, 1e9] as [number, number] };
+          const f = Math.pow(clamp((y - h.y0) / h.len, 0, 1), 1.3) * (1 - smooth(h.fade[0], h.fade[1], y));
+          x += p.hairFront * 16 * f;
+          y += Math.abs(p.hairFront) * 3 * f;
           break;
         }
         case 'back_hair': {

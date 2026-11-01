@@ -71,3 +71,4 @@
 - `src/background.ts` 新增 `mode = 'photo'`：鋪滿畫面、跟滑鼠有一點視差；依時間交叉淡入（5–7 點夜→日、16–17:30 日→黃昏、18:30–19:30 黃昏→夜）；稍微模糊、降一點飽和並蓋一層淡霧，讓角色站出來
 - 右上角「🖼 背景」切換圖片房間／原本程式畫的小窗戶房間，選擇記在瀏覽器；網址 `?bg=room`、`?bg=photo`、`?hour=` 可指定
 - 截圖 `screenshots/m10-bg-*.png`
+- 粉紅的長髮：垂到胸前的兩撮長髮另外切成 `hair_long`，根部跟頭、髮尾跟著頭髮物理擺動（`tune.hairLong`）；截圖 `screenshots/m10-long-hair.png`

@@ -236,7 +236,18 @@ front_hair = biggest(front_hair, 150)
 body = fg & (~HZ | (ys_ >= 555)) | neck
 body &= ~earring
 # copy of the hair / tail kept under them: blurred and without outlines, so it never shows as a double line
-under = body & (front_hair | tail | (HZ & ~neck))
+# long locks hanging in front of the dress: light pink pixels connected to the hair above
+hairlike = fg & (lum > 185) & (S > 0.08) & (S < 0.34) & ((hue < 0.03) | (hue > 0.95))
+low = fg & (ys_ >= 585) & ~face_vis & ~neck & ~tail & ~earring
+cand = cv2.morphologyEx((hairlike & low).astype(np.uint8), cv2.MORPH_OPEN,
+                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) > 0
+seed = dil(front_hair, 3) & low
+n, lab, st, _ = cv2.connectedComponentsWithStats((cand | seed).astype(np.uint8), connectivity=8)
+long_hair = np.isin(lab, list(set(np.unique(lab[seed])) - {0})) & low
+long_hair = fill_holes(cv2.morphologyEx(long_hair.astype(np.uint8), cv2.MORPH_CLOSE,
+                                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))) > 0) & low
+long_hair = dil(long_hair, 1) & low   # take the outline along the edge too
+under = body & (front_hair | tail | long_hair | (HZ & ~neck))
 # where the hair is cut straight (beside the neck) fade it out over the last rows
 side = np.maximum(np.clip((xs_ - 775) / 22.0, 0, 1), np.clip((485 - xs_) / 22.0, 0, 1))
 hair_fade = np.where(ys_ < 600, 1.0, side * np.clip((690 - ys_) / 25.0, 0, 1))
@@ -416,6 +427,10 @@ save_layer('blush', brgb, ba, 52)
 # hard edges inside the figure (the neighbouring layer starts right there), soft only on the outline
 fh_a = np.where(ero(fg, 2), front_hair.astype(np.float32), soft(front_hair, 0.5))
 save_layer('front_hair', rgb0, fh_a * alpha_src * hair_fade, 60)
+# long hair: starts under the faded end of the bangs and swings at the tips
+lh_top = np.clip((ys_ - 585) / 10.0, 0, 1)
+lh_a = np.where(ero(fg, 2), long_hair.astype(np.float32), soft(long_hair, 0.5)) * lh_top
+save_layer('hair_long', rgb0, lh_a * alpha_src, 56)
 save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=(440, 166)))
 save_layer('earring', rgb0, soft(earring, 0.5) * alpha_src, 70, dict(pivot=(812, 490)))
 
