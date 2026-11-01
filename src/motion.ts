@@ -188,7 +188,7 @@ export class Motion {
       p.eyeBallY = lerp(p.eyeBallY, -0.4, sl);
       p.eyeBallX = lerp(p.eyeBallX, 0, sl);
       p.bodyZ = lerp(p.bodyZ, 3, sl);
-      p.mouthOpen = lerp(p.mouthOpen, 0.12 + 0.06 * Math.sin((t / breathPeriod) * Math.PI * 2), sl);
+      p.mouthOpen = lerp(p.mouthOpen, 0.04 + 0.03 * Math.sin((t / breathPeriod) * Math.PI * 2), sl); // 睡著時嘴巴閉著（不要在張嘴／閉嘴之間閃）
       p.browY = lerp(p.browY, -0.3, sl);
     }
     p.eyeLOpen = eyeOpen;

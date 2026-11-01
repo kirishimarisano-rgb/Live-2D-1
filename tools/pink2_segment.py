@@ -338,6 +338,15 @@ fr = np.where(painted[..., None], cv2.GaussianBlur(fr, (0, 0), 3), fr)
 blur = cv2.GaussianBlur(fr, (0, 0), 1.5)
 seam = (dil(keep, 2) & ~ero(keep, 2)) & ~(keep & dark)
 fr = np.where(seam[..., None], blur, fr)
+# skin painted where the lashes were: match the skin right around that eye (it is in the shade of the bangs,
+# darker than the cheeks the fill borrows from), so a closed eye shows no pale patch
+for s_ in EYES:
+    ring = dil(EYEZONE[s_], 16) & ~dil(EYEZONE[s_], 6) & keep & face_core & ~dil(bar, 1)
+    tgt = painted & dil(EYEZONE[s_], 10)
+    if ring.sum() > 50 and tgt.any():
+        gain = np.median(rgb0[ring].astype(np.float32), 0) / np.maximum(np.median(fr[tgt], 0), 1)
+        w = soft(tgt, 3)[..., None]
+        fr = fr * (1 - w) + fr * gain * w
 face_rgb = np.clip(fr, 0, 255).astype(np.uint8)
 save_layer('face', face_rgb, soft(face_ext, 0.6) * np.where(face_vis, alpha_src, 1), 30)
 face_lum = face_rgb.astype(np.float32).mean(-1)
@@ -388,8 +397,20 @@ for s, e in EYES.items():
         l = EX[i].astype(np.float32).mean(-1)
         line = box & (l < 150) & dil(EYEZONE[s], 12)
         region = (dil(EYEZONE[s], 5) | dil(biggest(line, 20), 4)) & box & fg
+        if nm == 'closed':   # expression 10 has a pale smudge above the right eye: start just above the lid
+            region &= ys_ > top[None, :] - 4
         a_ = np.clip(soft(ero(region, 2), 2.5) * 1.15, 0, 1)
-        save_layer(f'eye{s}_{nm}', EX[i], a_, 44, dict(eye=s))
+        # strands of hair inside the patch stay with the hair layer, or they double up when the head moves
+        a_ *= 1 - soft(dil(front_hair, 1), 0.8)
+        # the generated drawing paints the lids a shade paler than the face: bring its skin tone to the face layer's
+        sk = (l > 170) & region
+        def lowpass(img):
+            num = cv2.GaussianBlur(img * sk[..., None], (0, 0), 7)
+            den = cv2.GaussianBlur(sk.astype(np.float32), (0, 0), 7)[..., None]
+            return num / np.maximum(den, 1e-3)
+        gain = lowpass(face_rgb.astype(np.float32)) / np.maximum(lowpass(EX[i].astype(np.float32)), 1)
+        patch = np.clip(EX[i].astype(np.float32) * np.clip(gain, 0.7, 1.3), 0, 255).astype(np.uint8)
+        save_layer(f'eye{s}_{nm}', patch, a_, 44, dict(eye=s))
     rig_eyes[s] = dict(top=[cpt(p) for p in e['top']], bot=[cpt(p) for p in e['bot']],
                        iris=cpt((cx, cy)) + [rx, ry], move=list(e['move']), rest=[0, 0])
 
