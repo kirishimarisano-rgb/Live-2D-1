@@ -347,18 +347,18 @@ export class Model {
     const side = name.startsWith('eyeL') ? 'L' : name.startsWith('eyeR') ? 'R' : null;
     if (side) {
       const open = side === 'L' ? p.eyeLOpen : p.eyeROpen;
-      const shut = 1 - smooth(0.07, 0.2, open); // 0 = 睜開、1 = 閉上
+      const shut = 1 - smooth(0.11, 0.13, open); // 0 = 睜開、1 = 閉上（切換要快，半透明疊在一起會變成兩條線）
       const part = name.slice(5);
-      if (part === 'white' || part === 'iris' || part === 'lower') return smooth(0.02, 0.12, open);
+      if (part === 'white' || part === 'iris' || part === 'lower') return smooth(0.1, 0.13, open);
       if (part === 'lash') return 1 - shut;
       if (part === 'closed') return shut * (1 - p.eyeSmile);
       if (part === 'smile') return shut * p.eyeSmile;
     }
     switch (name) {
       case 'mouth_closed':
-        return 1 - smooth(0.06, 0.3, p.mouthOpen);
+        return 1 - smooth(0.12, 0.16, p.mouthOpen);
       case 'mouth_open':
-        return smooth(0.04, 0.24, p.mouthOpen);
+        return smooth(0.12, 0.16, p.mouthOpen);
       case 'blush':
         return clamp(p.blush, 0, 1);
       default:

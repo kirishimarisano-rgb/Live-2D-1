@@ -32,7 +32,7 @@ export const pink: CharDef = {
       mouth_closed: { depth: 0.1, head: true, cell: 5 },
       mouth_open: { depth: 0.1, head: true, cell: 5 },
       blush: { depth: 0.1, head: true, cell: 12 },
-      front_hair: { depth: 0.35, head: true, fade: [550, 640], cell: 16 },
+      front_hair: { depth: 0.22, head: true, fade: [550, 640], cell: 16 },
       ahoge: { depth: 0.1, head: true, cell: 8 },
       earring: { depth: -0.1, head: true, cell: 8 },
     },

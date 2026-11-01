@@ -211,7 +211,11 @@ NECKBOX = poly([(555, 598), (705, 585), (705, 640), (555, 640)])
 hairish = fg & ~dil(bar, 1) & ~face_core
 # outlines next to the skin belong to the face when there is no hair on the other side (or along the jaw)
 lines = fg & dil(bar, 1) & ~face_core
-face_line = lines & dil(face_core, 4) & (~dil(hairish & ~NECKBOX, 3) | ((ys_ > 505) & dil(face_core, 3)))
+# (a strand crossing the skin has skin on both sides, but it is still hair: only the jaw outline is
+# taken even though hair lies right next to it)
+JAW = BIG & ~ero(BIG, 16) & (ys_ > 470)
+face_line = lines & dil(face_core, 4) & (~dil(hairish & ~NECKBOX, 3) | (JAW & dil(face_core, 3)))
+face_line &= ~dil(hairish & ~NECKBOX & ~JAW, 2) | JAW
 face_vis = fill_holes(face_core | face_line | (eyes_all & BIG))
 face_vis = fill_holes(cv2.morphologyEx(face_vis.astype(np.uint8), cv2.MORPH_CLOSE,
                                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) > 0) & fg
@@ -230,7 +234,9 @@ for s in EYES:
 front_hair = biggest(front_hair, 150)
 # the body reaches up under the lower hair, so a turning head never opens a gap at the cut
 body = fg & (~HZ | (ys_ >= 555)) | neck
-body &= ~tail & ~earring
+body &= ~earring
+# copy of the hair / tail kept under them: blurred and without outlines, so it never shows as a double line
+under = body & (front_hair | tail | (HZ & ~neck))
 # where the hair is cut straight (beside the neck) fade it out over the last rows
 side = np.maximum(np.clip((xs_ - 775) / 22.0, 0, 1), np.clip((485 - xs_) / 22.0, 0, 1))
 hair_fade = np.where(ys_ < 600, 1.0, side * np.clip((690 - ys_) / 25.0, 0, 1))
@@ -279,6 +285,10 @@ neck_fill = NECK_EXT & ~body
 body_ext = body | neck_fill
 neck_src = neck & ~dil(bar, 1) & (lum > 170)
 body_rgb = fill(rgb0.copy(), neck_src, neck_fill, 8)
+ub = fill(body_rgb, under & ~dil(bar, 2), under & dil(bar, 2), 5)
+ub = cv2.GaussianBlur(ub, (0, 0), 4)
+uw = soft(under, 2.0)[..., None]
+body_rgb = (body_rgb * (1 - uw) + ub * uw).astype(np.uint8)
 body_rgb = np.where(neck_fill[..., None], cv2.GaussianBlur(body_rgb, (0, 0), 3), body_rgb)
 save_layer('body', body_rgb, soft(body_ext, 0.5) * np.where(body, alpha_src, 1), 10)
 
@@ -288,7 +298,9 @@ def under_hair(name, m, z, r, extra=None):
     c = rgb0.copy(); c[~m] = 0
     c = fill(c, m & (lum > 150), ext & ~m, 7)
     c[m] = rgb0[m]
-    save_layer(name, c, soft(ext, 0.6) * np.where(m, alpha_src, 1), z, extra)
+    # inside the picture the cut runs through hair: keep it hard so the blurred copy below never shows as a seam
+    al = np.where(ero(fg, 2), ext.astype(np.float32), soft(ext, 0.6))
+    save_layer(name, c, al * np.where(m, alpha_src, 1), z, extra)
 
 under_hair('tail', tail, 20, 18, dict(pivot=(880, 210)))
 under_hair('headdress', hd, 25, 16)
@@ -296,7 +308,7 @@ under_hair('headdress', hd, 25, 16)
 # ---------------------------------------------------------------- face
 HEAD_OVAL = ellipse(HEAD_C[0] + 10, HEAD_C[1] + 20, HEAD_R - 20, HEAD_R - 25)
 # skin painted only where the bangs / headdress cover it (never over the neck or the background)
-face_ext = face_vis | (dil(face_vis, 18) & HEAD_OVAL & (front_hair | hd) & ~(ys_ > 615))
+face_ext = face_vis | (dil(face_vis, 18) & HEAD_OVAL & (front_hair | hd) & ~(ys_ > 568))
 for s_ in EYES:
     face_ext |= dil(LASH[s_], 9) & fg & ~front_hair & ~tail & ~hd   # lash wings reaching over the hair
 mouth_px = poly([(560, 520), (668, 520), (668, 575), (560, 575)]) & (lum < 190) & face_vis
@@ -403,7 +415,9 @@ brgb = np.where((ba > 0.02)[..., None], unblend(EX[7], rgb0, np.maximum(ba, 0.02
 save_layer('blush', brgb, ba, 52)
 
 # ---------------------------------------------------------------- front hair, ahoge, earring
-save_layer('front_hair', rgb0, soft(front_hair, 0.5) * alpha_src * hair_fade, 60)
+# hard edges inside the figure (the neighbouring layer starts right there), soft only on the outline
+fh_a = np.where(ero(fg, 2), front_hair.astype(np.float32), soft(front_hair, 0.5))
+save_layer('front_hair', rgb0, fh_a * alpha_src * hair_fade, 60)
 save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=(440, 166)))
 save_layer('earring', rgb0, soft(earring, 0.5) * alpha_src, 70, dict(pivot=(812, 490)))
 
