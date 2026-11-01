@@ -1,4 +1,7 @@
-"""Maid step 1: remove the white background (and the thought bubble) from art/ref-maid.jpg -> build/maid/cutout.png
+"""Maid step 1: remove the white background (and the thought bubble) -> build/maid/cutout.png
+
+Source: build/maid2/expression_01.png (the generated set, lined up by tools/maid2_align.py) when it
+exists, otherwise the original art/ref-maid.jpg.
 
 The art has thick dark outlines on pure white, so: flood the near-white area from the borders,
 keep the biggest remaining component (the girl; the thought bubble is separate), and turn the
@@ -6,7 +9,8 @@ anti-aliased rim into alpha by un-blending the outline colour from white.
 """
 import numpy as np, cv2, os
 from PIL import Image
-a = np.array(Image.open('art/ref-maid.jpg').convert('RGB')).astype(np.float32)
+SRC = 'build/maid2/expression_01.png' if os.path.exists('build/maid2/expression_01.png') else 'art/ref-maid.jpg'
+a = np.array(Image.open(SRC).convert('RGB')).astype(np.float32)
 H, W, _ = a.shape
 mn = a.min(-1)
 white = (mn > 228).astype(np.uint8)

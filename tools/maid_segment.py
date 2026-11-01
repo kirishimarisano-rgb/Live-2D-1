@@ -1,6 +1,7 @@
 """Maid step 2: cut build/maid/cutout.png into rig parts.
 
-Every coordinate below is in the pixel space of art/ref-maid.jpg (988×988).
+Every coordinate below is in the pixel space of art/ref-maid.jpg (988×988); the generated set in
+art/maid2 is lined up to that frame by tools/maid2_align.py.
 The picture is cropped at the right and bottom edge, so the girl peeks in from a corner.
 We pad those two cut edges (repeat the last pixels) so a head turn never shows a hard cut,
 and mirror everything (FLIP) so she peeks in from the bottom-LEFT corner of the screen.
@@ -37,6 +38,11 @@ for d in range(1, PAD_R + 1):
 rgb0 = src[..., :3].copy()
 alpha_src = src[..., 3].astype(np.float32) / 255.0
 fg = alpha_src > 0.5
+# the other expressions of the generated set (same frame, see tools/maid2_align.py)
+def expr(i):
+    im = np.array(Image.open(f'build/maid2/expression_{i:02d}.png').convert('RGB'))
+    return np.pad(im, ((0, PAD_B), (0, PAD_R), (0, 0)), mode='edge')
+EX = {i: expr(i) for i in (7, 10, 11)}
 
 # canvas = crop of the (padded) original; 10px headroom above the ahoge
 CANVAS = dict(x=300, y=250, w=W - 300, h=H - 250)
@@ -105,17 +111,18 @@ P['neck_ext'] = [(622, 800), (740, 800), (744, 892), (618, 892)]
 
 # eyes, original screen-left = 'L'.  top = lid lower edge, bot = outer edge of the eye ring, left→right
 EYES = {
-    'L': dict(top=[(537, 693), (548, 683), (575, 680), (600, 679), (625, 678), (636, 690)],
-              bot=[(537, 693), (539, 725), (553, 755), (585, 771), (615, 762), (632, 737), (636, 690), (636, 678)],
-              oval=(586, 724, 50, 47), upper=[(512, 668), (530, 663), (560, 660), (600, 659), (630, 660), (645, 666)], lashbox=(512, 652, 642, 688), seed=(575, 670),
-              brow=(596, 627, 628, 642), move=(9, 6)),
-    'R': dict(top=[(718, 702), (726, 688), (760, 690), (790, 697), (815, 704), (832, 714)],
-              bot=[(718, 702), (720, 740), (735, 772), (772, 790), (805, 783), (825, 760), (832, 726), (832, 714)],
-              oval=(775, 738, 57, 52), upper=[(712, 674), (730, 667), (760, 670), (790, 677), (820, 688), (850, 700), (866, 712)], lashbox=(712, 660, 866, 726), seed=(790, 686),
-              brow=(745, 640, 782, 664), move=(10, 6)),
+    'L': dict(top=[(537, 692), (548, 688), (575, 686), (600, 686), (625, 688), (632, 694)],
+              bot=[(537, 692), (541, 730), (555, 755), (585, 767), (615, 760), (630, 735), (632, 694), (632, 686)],
+              oval=(585, 727, 46, 41), upper=[(512, 690), (525, 676), (560, 668), (600, 668), (625, 672), (638, 680)], lashbox=(512, 660, 642, 698), seed=(580, 680),
+              brow=(555, 622, 630, 645), move=(9, 6)),
+    'R': dict(top=[(724, 705), (735, 703), (760, 706), (790, 711), (815, 718), (830, 725)],
+              bot=[(724, 705), (726, 745), (740, 775), (775, 790), (808, 783), (826, 760), (832, 728), (832, 725)],
+              oval=(777, 746, 54, 46), upper=[(712, 690), (735, 686), (770, 690), (800, 697), (830, 706), (855, 716), (868, 728)], lashbox=(712, 676, 870, 738), seed=(790, 700),
+              brow=(740, 645, 815, 672), move=(10, 6)),
 }
-MOUTH_C = (676, 812)
-BLUSH = {'L': (538, 780, 30, 15), 'R': (815, 802, 24, 14)}
+MOUTH_C = (668, 812)
+MOUTH_BOX = (630, 795, 708, 835)
+BLUSH = {'L': (537, 778, 30, 15), 'R': (775, 815, 24, 14)}
 OUTLINE = (34, 48, 92)
 
 M = {k: poly(v) for k, v in P.items()}
@@ -274,6 +281,11 @@ face_ext |= eye_zone & head
 remove = face_ext & ~face_vis
 for s in EYES:
     remove |= dil(oval[s], 2) | dil(lash_zone[s], 3) | dil(brow_px[s], 3)
+mx0, my0, mx1, my1 = MOUTH_BOX
+mbox = np.zeros_like(fg); mbox[my0:my1, mx0:mx1] = True
+mouth_px = mbox & (lum < 215) & (S > 0.12)
+mouth_px = biggest(mouth_px, 30)
+remove |= dil(mouth_px, 3)
 keep = face_vis & ~remove
 painted = face_ext & ~keep
 skin_src = keep & skin & ~dil(remove, 2)
@@ -362,9 +374,23 @@ for s, e in EYES.items():
     base = np.interp(xs, [l0[0], l1[0]], [l0[1], l1[1]]) + (e['oval'][3] * 2) * 0.5
     closed = list(zip(xs, base + 12 * 4 * t * (1 - t) - 8))
     smile = list(zip(xs, base - 14 * 4 * t * (1 - t) + 4))
-    for nm, pts in (('closed', closed), ('smile', smile)):
-        a_ = draw_line(pts, 11)
-        save_layer(eye_name(s, nm), a_[..., :3], a_[..., 3] / 255.0, 44, dict(eye=side(s)))
+    up = np.interp(np.arange(W), [p[0] for p in e['upper']], [p[1] for p in e['upper']])
+    bx0, by0, bx1, by1 = e['lashbox']
+    ybot = max(p[1] for p in e['bot'])
+    box = np.zeros_like(fg); box[by0 - 6:ybot + 6, bx0 - 10:bx1 + 10] = True
+    old_lines = dil(dark & ~dil(oval[s] | lash_zone[s], 3), 1)
+    for nm, i in (('closed', 10), ('smile', 7)):
+        l = np.array(Image.fromarray(EX[i]).convert('L')).astype(np.float32)
+        d = box & (l < 110) & ~old_lines
+        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(d.astype(np.uint8), connectivity=8)
+        big_ = st_[1:, 4].max()
+        d = np.isin(lab_, [k for k in range(1, n_) if st_[k, 4] >= max(20, 0.2 * big_)])
+        m = dil(d, 1) & (l < 230)
+        fl = fr.mean(-1)
+        a_ = np.clip((fl - l) / np.maximum(fl - 60, 1), 0, 1) * soft(m, 0.5)
+        a3 = np.maximum(a_, 1e-3)[..., None]
+        c_ = np.clip((EX[i].astype(np.float32) - (1 - a3) * fr) / a3, 0, 255).astype(np.uint8)
+        save_layer(eye_name(s, nm), c_, a_, 44, dict(eye=side(s)))
     top = [cpt(p) for p in e['top']]
     botc = [cpt(p) for p in e['bot'][:-1]]
     if FLIP:
@@ -380,25 +406,23 @@ for s, e in EYES.items():
 for s, e in EYES.items():
     save_layer(f'brow{side(s)}', rgb0, soft(dil(brow_px[s], 1), 0.6), 45, dict(eye=side(s)))
 
-# ---------------------------------------------------------------- mouth (she has none: paint a small one)
-S4 = 4
-mw, mh = 60, 50
-im = Image.new('RGBA', (mw * S4, mh * S4), (0, 0, 0, 0))
-d = ImageDraw.Draw(im)
-cxm, cym = mw * S4 / 2, 8 * S4
-shape = [(cxm - math.cos(math.pi * i / 40) * 12 * S4, cym + math.sin(math.pi * i / 40) * 16 * S4) for i in range(41)]
-shape += [(cxm + 12 * S4, cym), (cxm, cym - 2 * S4), (cxm - 12 * S4, cym)]
-d.polygon(shape, fill=(150, 56, 82, 255))
-d.ellipse([cxm - 8 * S4, cym + 7 * S4, cxm + 8 * S4, cym + 19 * S4], fill=(236, 128, 146, 255))
-mask = Image.new('L', im.size, 0); ImageDraw.Draw(mask).polygon(shape, fill=255)
-im.putalpha(Image.fromarray(np.minimum(np.array(im)[..., 3], np.array(mask))))
-ImageDraw.Draw(im).line(shape + [shape[0]], fill=OUTLINE + (255,), width=int(2.6 * S4), joint='curve')
-im = im.resize((mw, mh), Image.LANCZOS)
-mo = np.zeros((H, W, 4), np.uint8)
-ox, oy = MOUTH_C[0] - mw // 2, MOUTH_C[1] - 8
-mo[oy:oy + mh, ox:ox + mw] = np.array(im)
-save_layer('mouth_open', mo[..., :3], mo[..., 3] / 255.0, 51, dict(anchor=(MOUTH_C[0], MOUTH_C[1] - 1)))
-# closed: she has no mouth in the art, so there is no closed-mouth layer at all
+# ---------------------------------------------------------------- mouth: the small smile, and expression 11's open mouth
+fl = fr.mean(-1)
+ma = np.clip((fl - lum) / np.maximum(fl - 120, 1), 0, 1) * soft(dil(mouth_px, 1), 0.5)
+ma3 = np.maximum(ma, 1e-3)[..., None]
+mc = np.clip((rgb0.astype(np.float32) - (1 - ma3) * fr) / ma3, 0, 255).astype(np.uint8)
+save_layer('mouth_closed', mc, ma, 50)
+ex11 = EX[11]
+diff = np.abs(ex11.astype(np.int16) - rgb0.astype(np.int16)).max(-1) > 40
+big_box = dil(mbox, 14)
+h11 = cv2.cvtColor(ex11, cv2.COLOR_RGB2HSV_FULL)[..., 1] / 255.0
+l11 = np.array(Image.fromarray(ex11).convert('L')).astype(np.float32)
+mo = big_box & diff & ((l11 < 190) | (h11 > 0.3))
+mo = cv2.morphologyEx(mo.astype(np.uint8), cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))) > 0
+mo = biggest(mo, 60)
+ff = (~mo).astype(np.uint8); cv2.floodFill(ff, None, (0, 0), 0); mo |= ff > 0
+ys_m, xs_m = np.nonzero(mo)
+save_layer('mouth_open', ex11, soft(dil(mo, 1), 0.6), 51, dict(anchor=((xs_m.min() + xs_m.max()) / 2, ys_m.min() + 1)))
 
 # ---------------------------------------------------------------- blush overlay
 ga = Image.new('L', (W, H), 0)
@@ -423,7 +447,7 @@ save_layer('ahoge', rgb0, soft(ahoge, 0.5) * alpha_src, 65, dict(pivot=(748, 376
 
 rig = dict(
     canvas=dict(CANVAS, flip=FLIP, bleed=dict(left=PAD_R if FLIP else 0, right=0 if FLIP else PAD_R, bottom=PAD_B)),
-    source='art/ref-maid.jpg',
+    source='art/maid2/expression_01.png',
     headCenter=cpt((690, 690)), headRadius=260, neck=cpt((690, 868)),
     bodyPivot=cpt((690, H)), mouth=cpt(MOUTH_C),
     blush={side(s): cpt(b[:2]) for s, b in BLUSH.items()},

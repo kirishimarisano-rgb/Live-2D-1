@@ -33,7 +33,7 @@ npm run build    # 打包成 dist/index.html
 重新切圖需要 Python 3 和 `pip install pillow numpy opencv-python-headless`：
 
 ```bash
-npm run parts    # 兩個角色都重切：tools/pink2_segment.py（主角）、maid_cutout.py + maid_segment.py（女僕）
+npm run parts    # 兩個角色都重切：tools/pink2_segment.py（主角）、maid2_align.py + maid_cutout.py + maid_segment.py（女僕）
 python3 tools/rig_sheet.py pink   # 重新產生 RIG.md 用的圖（maid 也可以）
 python3 tools/compose.py maid out.png front_hair   # 把部位疊回去看看（第三個參數是要藏起來的部位）
 ```

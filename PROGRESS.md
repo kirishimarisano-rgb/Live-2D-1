@@ -60,4 +60,8 @@
 - **頭髮**：皮膚和頭髮顏色太接近，先用輪廓線圍出的區塊＋色相分；脖子旁邊頭髮的切口淡出，身體層往上延伸墊在頭髮下面，轉頭時不會裂開
 - 畫布長寬比改由 `rig.json` 決定（`index.html` 不再寫死）；`model.ts` 支援 `eye?_lower`
 - 截圖 `screenshots/m8-*.png`
-- 女僕的表情組 `art/maid2/` 已收到，下一步用同樣方法重做女僕
+
+## M9 女僕也換成生圖模型的表情組 ✅
+- `art/maid2/expression_01..12.png`（白底、對齊）；`tools/maid2_align.py` 用特徵點把它們對齊到舊圖 `ref-maid.jpg` 的座標，所以頭髮、頭飾、耳朵的多邊形都能沿用，只重量了眼睛、眉毛、嘴巴、臉紅
+- 閉眼取 `expression_10`、笑眼取 `expression_07`、張嘴取 `expression_11`，平常的小微笑嘴也有了（舊圖沒有嘴）
+- 截圖 `screenshots/m9-maid.png`

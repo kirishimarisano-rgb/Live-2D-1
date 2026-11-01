@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "parts": "python3 tools/pink2_segment.py && python3 tools/maid_cutout.py && python3 tools/maid_segment.py",
+    "parts": "python3 tools/pink2_segment.py && python3 tools/maid2_align.py && python3 tools/maid_cutout.py && python3 tools/maid_segment.py",
     "shots": "node tools/shots.mjs"
   },
   "devDependencies": {
