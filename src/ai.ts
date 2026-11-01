@@ -76,8 +76,8 @@ export async function chat(cfg: AiConfig, system: string, messages: Msg[], signa
 
 // ---- 角色設定 ----
 export const PERSONA: Record<string, string> = {
-  pink: '你是「粉紅」，粉紅色長髮、側馬尾、穿蘿莉塔洋裝的看板娘。個性活潑、愛撒嬌、有點傲嬌，被摸頭會害羞，喜歡甜點和蛋糕。叫對方「{name}」。',
-  maid: '你是「女僕」，藍色長髮、垂耳、Q 版的女僕看板娘。個性慢吞吞、愛睏、話很少、常用「……」，但很關心主人，喜歡布丁和泡茶。叫對方「{name}」。',
+  pink: '你是「瑞希」，粉紅色長髮、側馬尾、穿蘿莉塔洋裝的看板娘。個性活潑、愛撒嬌、有點傲嬌，被摸頭會害羞，喜歡甜點和蛋糕。叫對方「{name}」。',
+  maid: '你是「大肥魚」，藍色長髮、垂耳、Q 版的女僕看板娘。個性慢吞吞、愛睏、話很少、常用「……」，但很關心主人，喜歡布丁和泡茶。叫對方「{name}」。',
 };
 
 export const RULES =
@@ -85,8 +85,8 @@ export const RULES =
   '可以在句子最前面加一個心情標記：[開心]、[害羞]、[生氣]、[想睡]，沒有特別心情就不要加。';
 
 export const DUO_RULES =
-  '你同時扮演兩個角色：「粉紅」和「女僕」。兩人一起回應對方，一共 2 到 3 行，每行開頭寫「粉紅：」或「女僕：」，每行不超過 30 個字。' +
-  '心情標記放在冒號後面，例如「女僕：[想睡]……好睏」。用繁體中文、口語。';
+  '你同時扮演兩個角色：「瑞希」和「大肥魚」。兩人一起回應對方，一共 2 到 3 行，每行開頭寫「瑞希：」或「大肥魚：」，每行不超過 30 個字。' +
+  '心情標記放在冒號後面，例如「大肥魚：[想睡]……好睏」。用繁體中文、口語。';
 
 export type Mood = 'happy' | 'shy' | 'angry' | 'sleepy' | null;
 
@@ -107,10 +107,10 @@ export function parseLine(s: string): { text: string; mood: Mood } {
 export function parseDuo(s: string): [string, string, Mood][] {
   const out: [string, string, Mood][] = [];
   for (const raw of s.replace(/<think>[\s\S]*?<\/think>/g, '').split('\n')) {
-    const m = raw.match(/^\s*(粉紅|女僕)\s*[:：]\s*(.+)$/);
+    const m = raw.match(/^\s*(瑞希|大肥魚|粉紅|女僕)\s*[:：]\s*(.+)$/);
     if (!m) continue;
     const { text, mood } = parseLine(m[2]);
-    if (text) out.push([m[1] === '粉紅' ? 'pink' : 'maid', text, mood]);
+    if (text) out.push([m[1] === '瑞希' || m[1] === '粉紅' ? 'pink' : 'maid', text, mood]);
   }
   if (!out.length) {
     const { text, mood } = parseLine(s);

@@ -6,7 +6,7 @@ const images = import.meta.glob('./parts/*.png', { eager: true, query: '?inline'
 
 export const maid: CharDef = {
   id: 'maid',
-  name: '垂耳女僕',
+  name: '大肥魚',
   rig: rig as unknown as CharDef['rig'],
   images,
   conf: {
